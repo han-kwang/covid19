@@ -5,6 +5,7 @@ import numpy as np
 from scipy.sparse import csr_matrix, issparse
 import matplotlib.pyplot as plt
 import pandas as pd
+import itertools
 
 class EpidemyState:
     """Epidemiological state vector.
@@ -64,10 +65,10 @@ class EpidemyState:
         s.bins = np.zeros(self.nb)
         self.reset(*start)
 
-    def reset(self, nsus, ninf, gfac):
+    def reset(self, npop, ninf, gfac):
         """Reset with population of latent and symptomatic.
 
-        - nsus: number of susceptible
+        - npop: total population
         - ninf: number of latent+asymptomatic
         - gfac: growth factor (bin to bin).
         """
@@ -77,7 +78,7 @@ class EpidemyState:
         s.bins[s.sl_sym] = gfac**-np.arange(s.nb_lat, s.nb_lat+s.nb_sym)
 
         s.bins *= (ninf / s.bins.sum())
-        s.bins[s.i_sus] = nsus
+        s.bins[s.i_sus] = npop - sum(self.get_nums())
 
     def apply_matrix(self, mat):
         """Update self.bins := m @ self.bins"""
@@ -100,8 +101,7 @@ class EpidemyState:
 
         (nsus, nlat, nsym, nhos, nrec, nded) = self.get_nums()
         s = pd.Series(dict(
-            nsus=nsus, nlat=nlat, nsym=nsym, nhos=nhos,
-            nrec=nrec, nded=nded,
+            nsus=nsus, nlat=nlat, nsym=nsym, nhos=nhos, nrec=nrec, nded=nded,
             newL=self.bins[self.i_nwl],
             newH=self.bins[self.i_nwh],
             newD=self.bins[self.i_nwd],
@@ -125,6 +125,15 @@ class EpidemyState:
         labels[self.i_nwh] = 'NewH'
         labels[self.i_nwd] = 'NewD'
         return labels
+
+    def get_R_from_R0(self, R0):
+        """Get effective R from R0, accounting for herd immunity."""
+        (nsus, nlat, nsym, nhos, nrec, nded) = self.get_nums()
+
+        # susceptible fraction
+        f_sus = nsus / (nsus + nlat + nsym + nhos + nrec)
+
+        return f_sus * R0
 
     def as_dfrow(self):
         df = pd.DataFrame(self.bins.reshape(1, -1), columns=self.labels)
@@ -190,8 +199,7 @@ class EpidemyModel:
         n_hos = int(np.ceil(self.T_hos/self.tstep))
 
         self.estate = EpidemyState(n_lat, n_sym, n_hos)
-
-        self.mat = self.build_matrix()
+        self.update_matrix()
 
     def iterate(self, estate=None):
         """Apply one iteration to self.estate or other EpidemyState."""
@@ -206,7 +214,11 @@ class EpidemyModel:
         """Update R value."""
 
         self.R = float(new_R)
-        self.mat = self.build_matrix()
+
+        es = self.estate
+        self.mat[es.i_sus, es.i0_sym] = -self.R
+        self.mat[es.i0_lat, es.i0_sym] = self.R
+        self.mat[es.i_nwl, es.i0_sym] = self.R
 
     @staticmethod
     def _set_transfers_with_dispersion(matf, pf, n, sigma, inplace=True):
@@ -250,8 +262,11 @@ class EpidemyModel:
         assert matf.shape == orig_shape
         return matf
 
-    def build_matrix(self):
-        """Build and return sparse transfer matrix for estate.bins."""
+    def update_matrix(self):
+        """Build and update sparse transfer matrix for estate.bins.
+
+        self.mat will be updated. Also returned.
+        """
 
         es = self.estate
         (n,) = es.bins.shape
@@ -261,10 +276,8 @@ class EpidemyModel:
 
         ## Transfer from sym to lat
         matf.at['Sus', 'Sus'] = 1
-        matf.at['Sus', 'Sy0'] = -self.R
-        matf.at['La0', 'Sy0'] = self.R
-        matf.at['NewL', 'Sy0'] = self.R
 
+        # Note: R feedback is done in the end.
         ## latent transfers
         # number of latent steps, int and fractional part
         f, nlat = np.modf(self.T_lat/self.tstep)
@@ -320,8 +333,19 @@ class EpidemyModel:
             matf.at['Ded', f'Ho{nhos}'] = 1
             matf.at['NewD', f'Ho{nhos}'] = 1
 
-        mat = csr_matrix(matf.to_numpy())
-        return mat
+        ## Ded/Rec entries must be preserved.
+        matf.at['Ded', 'Ded'] = 1
+        matf.at['Rec', 'Rec'] = 1
+
+        # need to put placehollder values for R before converting to sparse
+        matf.at['Sus', 'Sy0'] = -999
+        matf.at['La0', 'Sy0'] = -999
+        matf.at['NewL', 'Sy0'] = -999
+
+        self.mat = csr_matrix(matf.to_numpy())
+        self.change_R(self.R)
+
+        return self.mat
 
     def mat_as_df(self):
         """Return matrix as DataFrame with column/row labels."""
@@ -350,8 +374,6 @@ def test_EpidemyModel():
         'Ho0', 'Ho1', 'Ded', 'Rec', 'NewL', 'NewH', 'NewD'
         ]
     assert list(em.estate.labels) == expected_labels
-
-
     matf = em.mat_as_df()
 
     assert list(matf.index) == expected_labels
@@ -365,17 +387,17 @@ def test_EpidemyModel():
        [ 0,  0,  0,  0,  0.03,0,  0,   0,  0,  0,  0,  0,  0 ],
        [ 0,  0,  0,  0,  0.07,1,  0,   0,  0,  0,  0,  0,  0 ],
        [ 0,  0,  0,  0,  0,   0,  0.09,0,  0,  0,  0,  0,  0 ],
-       [ 0,  0,  0,  0,  0,   0,  0.01,1,  0,  0,  0,  0,  0 ],
-       [ 0,  0,  0,  0,  0.9, 0,  0.9 ,0,  0,  0,  0,  0,  0 ],
+       [ 0,  0,  0,  0,  0,   0,  0.01,1,  1,  0,  0,  0,  0 ],
+       [ 0,  0,  0,  0,  0.9, 0,  0.9 ,0,  0,  1,  0,  0,  0 ],
        [ 0,  0,  0,  0,  2,   0,  0,   0,  0,  0,  0,  0,  0 ],
        [ 0,  0,  0,  0,  0.07,1,  0,   0,  0,  0,  0,  0,  0 ],
        [ 0,  0,  0,  0,  0,   0,  0.01,1,  0,  0,  0,  0,  0 ]])
 
     assert np.allclose(matf.to_numpy(), expected_matrix)
 
-    pd.options.display.float_format = '{:.3g}'.format
-    pd.options.display.max_columns = 100
-    pd.options.display.width = 200
+    # check preservation of number of people (ignore 'newX' rows/columns)
+    submat = matf.loc['Sus':'Rec', 'Sus':'Rec']
+    assert np.allclose(submat.sum(axis=0), 1)
 
 
 def test_EpModel_disp(interactive=False):
@@ -419,11 +441,24 @@ def set_pandas_format():
     pd.options.display.max_columns = 100
     pd.options.display.width = 200
 
+def estimate_T2(emodel, states, verbose=True):
+    """Return doubling time from states list (based on 1st and last entry)."""
+
+    gfac = states[-1]['newL']/states[0]['newL']
+    T2 = np.log(2)/np.log(gfac)*emodel.tstep/(len(states)-1)
+
+    if verbose:
+        print(f'Doubling time T2={T2:.2f}. Rt={emodel.R:.2f}')
+
+    return T2
+
+
 
 def run_simulation(
         T_lat=3.5, T_mild=7.5, T_hos=11, ihr=0.7e-2, ifr=0.2e-2,
-        RTa=(1.3, 30), RTb=(0.9, 30), init=(30e3, 25),
-        dispersion=0.15
+        RTa=(1.3, 30), RTb=(0.9, 60), init=(30e3, 25),
+        dispersion=0.15,
+        fname=None
         ):
     """Simulation run.
 
@@ -439,6 +474,7 @@ def run_simulation(
     - init: initialize with (N, T), aim for N latent/mild cases at start;
       allow duration T for simulation to settle.
     - dispersion: relative variation of durations T_lat/mild/hos.
+    - fname: optional filename to save data.
     """
 
     em = EpidemyModel(
@@ -454,25 +490,28 @@ def run_simulation(
     estate.reset(16e6, init[0]*gfac**(-init[1]/em.tstep), gfac)
     for i in range(int(init[1]/em.tstep + 0.5)):
         em.iterate(estate)
+        em.change_R(estate.get_R_from_R0(RTa[0]))
 
+    # Here the real simulation starts.
     states = [estate.get_nums_series()]
+    Rvals = [em.R]
     for i in range(int(RTa[1]/em.tstep+0.5)):
         em.iterate(estate)
+        em.change_R(estate.get_R_from_R0(RTa[0]))
         states.append(estate.get_nums_series())
+        Rvals.append(em.R)
 
     # Verify exponential growth factor
-    gfac = states[-1]['newL']/states[-2]['newL']
-    T2a = np.log(2)/np.log(gfac)*em.tstep
-    print(f'Phase A: doubling time T2={T2a:.2f}')
+    T2a = estimate_T2(em, states[-2:])
 
     em.change_R(RTb[0])
     for i in range(int(RTb[1]/em.tstep+0.5)):
         em.iterate(estate)
+        em.change_R(estate.get_R_from_R0(RTb[0]))
         states.append(estate.get_nums_series())
+        Rvals.append(em.R)
     # Verify exponential growth factor
-    gfac = states[-1]['newL']/states[-2]['newL']
-    T2b = np.log(2)/np.log(gfac)*em.tstep
-    print(f'Phase B: doubling time T2={T2b:.2f}')
+    T2b = estimate_T2(em, states[-2:])
 
     sim_df = pd.DataFrame(states)
     sim_df.set_index(np.arange(len(sim_df))*0.5, inplace=True)
@@ -482,45 +521,66 @@ def run_simulation(
         npop = sim_df.iloc[i][['nsus', 'nlat', 'nsym', 'nhos', 'nded', 'nrec']].sum()
         print(f'npop={npop:.5g}')
 
-    print(em.mat_as_df())
+    ### plotting
+    cyc_lines = itertools.cycle(["-", "--", "-.", ":"])
 
-    fig, ax = plt.subplots(1, 1, figsize=(8, 5), tight_layout=True)
-    ax.set_xlabel('Time (days)')
-    ax.set_ylabel('Daily numbers')
+    fig, (ax0, ax1) = plt.subplots(
+        2, 1, figsize=(8, 7), tight_layout=True,
+        gridspec_kw={'height_ratios': [3, 1]}, sharex=True
+        )
+
+    ax1.set_xlabel('Time (days)')
+    ax0.set_ylabel('Daily numbers')
+    ax0.set_xlim(sim_df.index[0], sim_df.index[-1])
 
     nums_infected = sim_df['nlat'] + sim_df['nsym'] + sim_df['nhos']
-    ax.semilogy(nums_infected, label='Active cases')
+    ax0.semilogy(nums_infected, linestyle=next(cyc_lines), label='Active cases')
+    ax0.semilogy(sim_df['newL'], linestyle=next(cyc_lines), label='New infections')
+    ax0.semilogy(sim_df['nded'], linestyle=next(cyc_lines), label='Cumulative deaths')
+    ax0.semilogy(sim_df['newD'], linestyle=next(cyc_lines), label='New deaths')
+    ax0.semilogy(sim_df['newH'], linestyle=next(cyc_lines), label='New hospitalizations')
 
-    ax.semilogy(sim_df['newL'], label='New infections')
-    ax.semilogy(sim_df['newH'], label='New hospitalizations')
-    ax.semilogy(sim_df['newD'], label='New deaths')
-    ax.axvline(RTa[1])
+    nded_final = sim_df['nded'].iat[-1]
+    ax0.text(sim_df.index[-1], nded_final, f'{nded_final/1000:.3g}k',
+             horizontalalignment='right', verticalalignment='top'
+            )
 
-    ax.grid()
-    ax.legend()
+    ax0.axvline(RTa[1])
+
+    ax0.grid()
+    ax0.legend()
+
+    # bottom panel
+    ax1.plot(sim_df.index, Rvals, label='$R_t$')
+
+    f_sus = sim_df['nsus']/(sim_df[['nsus', 'nlat', 'nsym', 'nhos', 'nded', 'nrec']].sum(axis=1))
+    ax1.plot(1-f_sus, linestyle='--', label='Herd immunity level')
+
+    ax1.grid()
+    ax1.legend()
+
+
 
     info = (
         f'SEIR model, T_latent={em.T_lat:.3g}, T_mild={em.T_sym:.3g}, '
         f'T_hospital={em.T_hos:.3g}, '
         f'IHR={em.ihr*100:.3g}%, IFR={em.ifr*100:.3g}%\n'
-        f'R={RTa[0]}, {RTb[0]} up to/from t={RTa[1]}. '
+        f'$R_1$={RTa[0]}, {RTb[0]} up to/from t={RTa[1]}. '
         f'Doubling time: {T2a:.3g}, {T2b:.3g} before/after'
         )
-    ax.set_title(info)
+    ax0.set_title(info)
 
     fig.text(0.99, 0.02, '@hk_nien (DRAFT)', horizontalalignment='right')
-
     fig.show()
 
-
+    if fname:
+        fig.savefig(fname)
 
 if __name__ == '__main__':
     set_pandas_format()
     plt.close('all')
     test_EpidemyModel()
     test_EpModel_disp()
-    run_simulation()
-
-
-
-
+    run_simulation(RTa=(1.3, 30), RTb=(0.9, 120), fname='seir0.png')
+    run_simulation(RTa=(1.3, 37), RTb=(0.9, 113), fname='seir1.png')
+    run_simulation(RTa=(1.3, 150), RTb=(0.9, 0), fname='seir2.png')
