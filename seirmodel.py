@@ -1,4 +1,7 @@
-"""SEIR Model for Covid-19."""
+"""SEIR Model for Covid-19.
+
+Author: Han-Kwang Nienhuys (2020).
+"""
 
 __all__ = ['EpidemyState', 'EpidemyModel', 'run_simulation']
 
