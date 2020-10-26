@@ -4,7 +4,7 @@ Created on Sat Aug 15 11:51:39 2020
 
 This is best run inside Spyder, not as standalone script.
 
-@author: hnienhuy
+Author: @hk_nien on Twitter.
 """
 import re
 import sys
@@ -78,12 +78,27 @@ df_restrictions['Date'] = pd.to_datetime(df_restrictions['Date']) + pd.Timedelta
 df_restrictions.set_index('Date', inplace=True)
 
 
+Rt_rivm = pd.DataFrame.from_records([
+    ('2020-07-31T12:00', 1.22),
+    ('2020-08-07T12:00', 0.96),
+    ('2020-08-14T12:00', 0.95),
+    ('2020-08-21T12:00', 1.15),
+    ('2020-08-28T12:00', 1.39),
+    ('2020-09-04T12:00', 1.34),
+    ('2020-09-11T12:00', 1.28),
+    ('2020-09-18T12:00', 1.20),
+    ('2020-09-24T12:00', 1.28),
+    ('2020-10-02T12:00', 1.22),
+    ])
+Rt_rivm = pd.Series(data=Rt_rivm[1].to_numpy(), index=pd.to_datetime(Rt_rivm[0]), name='Rt_rivm')
+
+
 #%%
 
 
 
 def get_mun_data(df, mun, n_inw, lastday=-1):
-    """Return dataframe for one municipality, added 'Delta' and 'Delta7r' columns.
+    """Return dataframe for one municipality, added 'Delta', 'Delta7r' columns.
 
     Use data up to lastday.
     """
@@ -120,6 +135,30 @@ def get_mun_data(df, mun, n_inw, lastday=-1):
 
     return df1
 
+def estimate_Rt_series(r7, delay=10, Tc=4.0):
+    """Return Rt data, assuming delay infection-reporting.
+
+    - r7: Series with 7-day rolling average of new reported infections.
+    - delay: assume delay (days) from date of infection.
+    - Tc: assume generation interval.
+
+    Return:
+
+    - Series with name 'Rt' (shorter than r7 by delay+1).
+    """
+
+    log_r7 = np.log(r7.to_numpy()) # shape (n,)
+    assert len(log_r7.shape) == 1
+
+    log_slope = (log_r7[2:] - log_r7[:-2])/2 # (n-2,)
+    Rt = np.exp(Tc*log_slope) # (n-2,)
+
+    # Attach to index with proper offset
+    index = r7.index[1:-1] - pd.Timedelta(delay, unit='days')
+
+    return pd.Series(index=index, data=Rt, name='Rt')
+
+
 
 def get_t2_Rt(df1, delta_t, i0=-3, use_r7=True):
     """Return most recent doubling time and Rt."""
@@ -132,7 +171,7 @@ def get_t2_Rt(df1, delta_t, i0=-3, use_r7=True):
     Rt = 2**(t_gen / t_double)
     return t_double, Rt
 
-def add_labels(ax, labels, xpos, mindist_scale=1.0):
+def add_labels(ax, labels, xpos, mindist_scale=1.0, logscale=True):
     """Add labels, try to have them avoid bumping.
 
 
@@ -148,8 +187,11 @@ def add_labels(ax, labels, xpos, mindist_scale=1.0):
     labels = sorted(labels)
 
     # log positions and sorted
-    logys = np.log10([l[0] for l in labels])
-    n = len(logys)
+    if logscale:
+        Ys = np.log10([l[0] for l in labels])
+    else:
+        Ys = np.array([l[0] for l in labels])
+    n = len(Ys)
 
     # Distance matrix: D @ y = distances between adjacent y values
     D = np.zeros((n-1, n))
@@ -157,29 +199,30 @@ def add_labels(ax, labels, xpos, mindist_scale=1.0):
         D[i, i] = -1
         D[i, i+1] = 1
 
-    def cons(ly):
-        ds = D @ ly
+    def cons(Y):
+        ds = D @ Y
         errs = np.array([ds - mindist, ds])
         #print(f'{np.around(errs, 2)}')
         return errs.reshape(-1)
 
     # optimization function
-    def func(ly):
-        return ((ly - logys)**2).sum()
+    def func(Y):
+        return ((Y - Ys)**2).sum()
 
-    new_logys = fmin_cobyla(func, logys, cons, catol=mindist*0.05)
+    new_Ys = fmin_cobyla(func, Ys, cons, catol=mindist*0.05)
 
-    for lgy, (_, txt) in zip(new_logys, labels):
-        ax.text(xpos, 10**lgy,txt, verticalalignment='center')
+    for Y, (_, txt) in zip(new_Ys, labels):
+        y = 10**Y if logscale else y
+        ax.text(xpos, y, txt, verticalalignment='center')
 
-def plot_daily_trends(minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
+
+def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
                       use_r7=True):
     """Plot daily-case trends.
 
+    - df: DataFrame with processed per-municipality data.
     - minpop: minimum city population
     - lastday: up to this day.
-    - mindist: minimum spacing of curve labels.
-      Adjust depending on y range.
     - use_r7: whether to use 7-day rolling average.
     """
 
@@ -266,6 +309,66 @@ def plot_daily_trends(minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
         tl.set_ha('left')
 
 
+def plot_Rt(df, minpop=2e+5, ndays=100, lastday=-1, delay=10, mun_regexp='Nederland',
+            Tc=4.0, Rt_rivm=None):
+    """Plot daily-case trends (using global DataFrame df).
+
+    - df: DataFrame with processed per-municipality data.
+    - minpop: minimum city population
+    - lastday: up to this day.
+    - delay: assume delay days from infection to positive report.
+    - Tc: generation interval time
+    - Rt_rivm: optional series with RIVM estimates.
+    """
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    fig.subplots_adjust(top=0.90, bottom=0.085, left=0.09, right=0.83)
+
+    # dict: municitpality -> population
+    muns = df_mun.loc[df_mun['Inwoners'] > minpop]['Inwoners'].to_dict()
+    muns['Nederland'] = float(df_mun.sum())
+
+    labels = [] # tuples (y, txt)
+    for mun, n_inw in muns.items():
+
+        if mun_regexp and not re.match(mun_regexp, mun):
+            continue
+
+        df1 = get_mun_data(df, mun, n_inw, lastday=lastday)
+        Rt = estimate_Rt_series(df1['Delta7r'].iloc[-ndays-delay:], delay=delay, Tc=Tc)
+
+        fmt = 'o-' if ndays < 70 else '-'
+        psize = 5 if ndays < 30 else 3
+        ax.plot(Rt, fmt, label=mun, markersize=psize)
+
+        labels.append((Rt[-1], f' {mun}'))
+
+    if len(labels) == 0:
+        fig.close()
+        raise ValueError(f'No data to plot.')
+
+    if Rt_rivm is not None:
+        ax.plot(Rt_rivm, 'o', markersize=7, color='k', label='RIVM')
+
+    y_lab = ax.get_ylim()[0]
+    for res_t, res_d in df_restrictions['Description'].iteritems():
+        ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
+
+    lab_x = Rt.index[-1] + pd.Timedelta('1.2 d')
+    add_labels(ax, labels, lab_x)
+    ax.grid(which='both')
+    ax.axvline(Rt.index[-4], color='gray')
+    ax.set_title('Reproductiegetal o.b.v. positieve tests; laatste 3 dagen zijn een extrapolatie\n'
+                 f'(Generatie-interval: {Tc:.3g} dg, rapportagevertraging {delay} dg)' )
+    ax.set_ylabel('Reproductiegetal $R_t$')
+
+    #ax.set_ylim(0.05, None)
+    ax.set_xlim(Rt.index[0] - pd.Timedelta('12 h'), Rt.index[-1] + pd.Timedelta('1 d'))
+    ax.legend() # loc='lower left')
+    for tl in ax.get_xticklabels():
+        tl.set_ha('left')
+
+
 def update_csv(force=False):
     """Update csv file (if not recently updated)."""
 
@@ -281,13 +384,17 @@ def update_csv(force=False):
             tm = time.time()
             loc_time = time.localtime(tm)
             day_seconds = loc_time[3]*3600 + loc_time[4]*60 + loc_time[5]
-            tm_latest = tm - day_seconds + 14*3600 + 15*60
+            tm_latest = tm - day_seconds + 14*3600
             if tm_latest > tm:
                 tm_latest -= 86400
 
             tm_file = fpath.stat().st_mtime
-            if tm_file > tm_latest:
+            if tm_file > tm_latest + 1800: # after 14:30
                 print('Not updating file; seems to be recent enough.')
+                return
+            if tm_file > tm_latest:
+                print('file may or may not be the latest version.')
+                print('Use update_csv(force=True) to be sure.')
                 return
 
 
@@ -298,7 +405,7 @@ def update_csv(force=False):
         if data_bytes == local_file_data:
             print(f'{fpath}: already latest version.')
         else:
-            fpath.write_bytes(html)
+            fpath.write_bytes(data_bytes)
             print(f'Wrote {fpath} .')
 
 if __name__ == '__main__':
@@ -316,4 +423,5 @@ if __name__ == '__main__':
 
     print(f'CSV most recent date: {df["Date_of_report"].iat[-1]}')
 
-    plot_daily_trends(ndays=40, lastday=-1, use_r7=True, minpop=2e5)
+    plot_daily_trends(df, ndays=40, lastday=-1, use_r7=True, minpop=2e5)
+    plot_Rt(df, ndays=60, lastday=-1, minpop=4e5, Rt_rivm=Rt_rivm)
