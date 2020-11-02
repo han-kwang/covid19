@@ -7,7 +7,6 @@ This is best run inside Spyder, not as standalone script.
 Author: @hk_nien on Twitter.
 """
 import re
-import sys
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,32 +14,6 @@ import urllib
 from pathlib import Path
 import time
 
-## This is old stuff. It turns out that the 'casus' file is a pain to use.
-# # https://data.rivm.nl/covid-19/COVID-19_casus_landelijk.json
-
-# # Date_file: Datum en tijd waarop de gegevens zijn gepubliceerd door het RIVM
-
-# # Date_statistics: Datum voor statistiek; eerste ziektedag, indien niet bekend, datum lab positief, indien niet bekend, melddatum aan GGD (formaat: jjjj-mm-dd)
-
-# # Date_statistics_type: Soort datum die beschikbaar was voor datum voor de variabele "Datum voor statistiek", waarbij:
-# # DOO = Date of disease onset : Eerste ziektedag zoals gemeld door GGD. Let op: het is niet altijd bekend of deze eerste ziektedag ook echt al Covid-19 betrof.
-# # DPL = Date of first Positive Labresult : Datum van de (eerste) positieve labuitslag.
-# # DON = Date of Notification : Datum waarop de melding bij de GGD is binnengekomen.
-
-# # Agegroup: Leeftijdsgroep bij leven; 0-9, 10-19, ..., 90+; bij overlijden
-
-# df = pd.read_json('COVID-19_casus_landelijk.json')
-# for col in ['Date_file', 'Date_statistics']:
-#     df[col] = pd.to_datetime(df[col])
-
-
-# #%%
-
-# dfg_cases = df.groupby('Date_statistics').count()
-
-# plt.close('all')
-
-# plt.plot(dfg_cases.index, dfg_cases['Date_file'])
 
 #%%
 
@@ -80,15 +53,26 @@ df_restrictions.set_index('Date', inplace=True)
 
 Rt_rivm = pd.DataFrame.from_records([
     ('2020-07-31T12:00', 1.22),
+    ('2020-08-03T12:00', 1.02),
     ('2020-08-07T12:00', 0.96),
+    ('2020-08-10T12:00', 0.94),
     ('2020-08-14T12:00', 0.95),
+    ('2020-08-17T12:00', 0.99),
     ('2020-08-21T12:00', 1.15),
+    ('2020-08-24T12:00', 1.17),
     ('2020-08-28T12:00', 1.39),
+    ('2020-08-31T12:00', 1.36),
     ('2020-09-04T12:00', 1.34),
+    ('2020-09-07T12:00', 1.24),
     ('2020-09-11T12:00', 1.28),
+    ('2020-09-14T12:00', 1.18),
     ('2020-09-18T12:00', 1.20),
+    ('2020-09-21T12:00', 1.16),
     ('2020-09-24T12:00', 1.28),
+    ('2020-09-27T12:00', 1.31),
     ('2020-10-02T12:00', 1.22),
+    ('2020-10-05T12:00', 1.12),
+    ('2020-10-09T12:00', 1.16),
     ])
 Rt_rivm = pd.Series(data=Rt_rivm[1].to_numpy(), index=pd.to_datetime(Rt_rivm[0]), name='Rt_rivm')
 
@@ -348,7 +332,7 @@ def plot_Rt(df, minpop=2e+5, ndays=100, lastday=-1, delay=10, mun_regexp='Nederl
         raise ValueError(f'No data to plot.')
 
     if Rt_rivm is not None:
-        ax.plot(Rt_rivm, 'o', markersize=7, color='k', label='RIVM')
+        ax.plot(Rt_rivm, 'ko-', markersize=4, label='RIVM')
 
     y_lab = ax.get_ylim()[0]
     for res_t, res_d in df_restrictions['Description'].iteritems():
@@ -424,4 +408,4 @@ if __name__ == '__main__':
     print(f'CSV most recent date: {df["Date_of_report"].iat[-1]}')
 
     plot_daily_trends(df, ndays=40, lastday=-1, use_r7=True, minpop=2e5)
-    plot_Rt(df, ndays=60, lastday=-1, minpop=4e5, Rt_rivm=Rt_rivm)
+    plot_Rt(df, ndays=60, lastday=-1, minpop=4e5, delay=9, Rt_rivm=Rt_rivm)
