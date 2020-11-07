@@ -14,6 +14,7 @@ import urllib
 from pathlib import Path
 import time
 import locale
+from holiday_regions import add_holiday_regions
 
 
 
@@ -109,11 +110,21 @@ Rt_rivm = pd.Series(data=Rt_rivm[1].to_numpy(), index=pd.to_datetime(Rt_rivm[0])
 def get_mun_data(df, mun, n_inw, lastday=-1):
     """Return dataframe for one municipality, added 'Delta', 'Delta7r' columns.
 
+    Special municipalities:
+
+    - 'Nederland': all
+    - 'HR:Zuid', 'HR:Noord', 'HR:Midden': holiday regions.
+    - 'P:xx': province
+
     Use data up to lastday.
     """
 
     if mun == 'Nederland':
         df1 = df.groupby('Date_of_report').sum()
+    elif mun.startswith('HR:'):
+        df1 = df.loc[df['HolRegion'] == mun[3:]].groupby('Date_of_report').sum()
+    elif mun.startswith('P:'):
+        df1 = df.loc[df['Province'] == mun[2:]].groupby('Date_of_report').sum()
     else:
         df1 = df.loc[df.Municipality_name == mun].copy()
         df1.set_index('Date_of_report', inplace=True)
@@ -121,10 +132,15 @@ def get_mun_data(df, mun, n_inw, lastday=-1):
     if lastday < -1 or lastday > 0:
         df1 = df1.iloc[:lastday+1]
 
+    if len(df1) == 0:
+        raise ValueError(f'No data for mun={mun!r}.')
+
     # nc: number of cases
     nc = df1['Total_reported'].diff()
     if mun == 'Nederland':
         print(nc[-3:])
+
+    
     nc.iat[0] = 0
     nc7 = nc.rolling(7, center=True).mean()
     nc7a = nc7.to_numpy()
@@ -320,42 +336,42 @@ def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
         tl.set_ha('left')
 
 
-def plot_Rt(df, minpop=5e6, ndays=100, lastday=-1, delay=10, mun_regexp='Nederland',
+def plot_Rt(df, ndays=100, lastday=-1, delay=9,
+            regions='Nederland',
             Tc=4.0, Rt_rivm=None):
     """Plot daily-case trends (using global DataFrame df).
 
     - df: DataFrame with processed per-municipality data.
-    - minpop: minimum city population
     - lastday: up to this day.
     - delay: assume delay days from infection to positive report.
     - Tc: generation interval time
     - Rt_rivm: optional series with RIVM estimates.
+    - regions: comma-separated string (or list of str);
+      'Nederland', 'V:xx' (holiday region), 'P:xx' (province), 'M:xx'
+      (municipality).
     """
 
     fig, ax = plt.subplots(figsize=(10, 5))
     fig.subplots_adjust(top=0.90, bottom=0.085, left=0.09, right=0.93)
     plt.xticks(rotation=-20)
     # dict: municitpality -> population
-    muns = df_mun.loc[df_mun['Inwoners'] > minpop]['Inwoners'].to_dict()
-    muns['Nederland'] = float(df_mun.sum())
 
     labels = [] # tuples (y, txt)
+    if isinstance(regions, str):
+        regions = regions.split(',')
 
-    for mun, n_inw in muns.items():
+    for region in regions:
 
-        if mun_regexp and not re.match(mun_regexp, mun):
-            continue
-
-        df1 = get_mun_data(df, mun, n_inw, lastday=lastday)
+        df1 = get_mun_data(df, region, 1e9, lastday=lastday)
         Rt = estimate_Rt_series(df1['Delta7r'].iloc[-ndays-delay:], delay=delay, Tc=Tc)
 
         fmt = 'o-' if ndays < 70 else '-'
         psize = 5 if ndays < 30 else 3
 
-        label = 'Schatting' if mun_regexp == 'Nederland' else mun
+        label = re.sub('^[A-Z]+:', '', region)
         ax.plot(Rt, fmt, label=label, markersize=psize)
 
-        labels.append((Rt[-1], f' {mun}'))
+        labels.append((Rt[-1], f' {label}'))
 
     if len(labels) == 0:
         fig.close()
@@ -399,7 +415,7 @@ def plot_Rt(df, minpop=5e6, ndays=100, lastday=-1, delay=10, mun_regexp='Nederla
             verticalAlignment='top', horizontalAlignment='right',
             rotation=90)
 
-    ax.legend() # loc='lower left')
+    ax.legend(loc='upper center')
     for tl in ax.get_xticklabels():
         tl.set_ha('left')
 
@@ -425,7 +441,7 @@ def update_csv(force=False):
 
             tm_file = fpath.stat().st_mtime
             if tm_file > tm_latest + 1800: # after 14:30
-                print('Not updating file; seems to be recent enough.')
+                print('Not updating file; seems to bxe recent enough.')
                 return
             if tm_file > tm_latest:
                 print('file may or may not be the latest version.')
@@ -447,16 +463,17 @@ if __name__ == '__main__':
 
 
     update_csv()
-
-
     plt.close('all')
     plt.rcParams["date.autoformatter.day"] = "%d %b"
     locale.setlocale(locale.LC_TIME, 'nl_NL.UTF-8')
     df = pd.read_csv('data/COVID-19_aantallen_gemeente_cumulatief.csv', sep=';')
     df = df.loc[~df.Municipality_code.isna()]
+    df = add_holiday_regions(df)
     df['Date_of_report'] = pd.to_datetime(df['Date_of_report'])
 
     print(f'CSV most recent date: {df["Date_of_report"].iat[-1]}')
 
     plot_daily_trends(df, ndays=100, lastday=-1, use_r7=True, minpop=2e5)
-    plot_Rt(df, ndays=130, lastday=-1, minpop=4e5, delay=9, Rt_rivm=Rt_rivm)
+    plot_Rt(df, ndays=130, lastday=-1, delay=9, Rt_rivm=Rt_rivm)
+    plot_Rt(df, ndays=130, lastday=-1, delay=9, Rt_rivm=Rt_rivm,
+            regions='Nederland,HR:Noord,HR:Midden,HR:Zuid')
