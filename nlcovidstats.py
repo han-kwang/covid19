@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import urllib
 from pathlib import Path
 import time
+import locale
+
 
 
 #%%
@@ -39,19 +41,40 @@ df_restrictions = pd.DataFrame([
     ('2020-05-11', 'Heropening, max 30'),
     ('2020-06-01', 'Mondkapje OV'),
     ('2020-07-01', "Max 100"),
+    ('2020-07-04', "Schoolvak. Noord"),
+    ('2020-07-11', "Schoolvak. Zuid"),
+    ('2020-07-18', "Schoolvak. Midden"),
     ('2020-08-17', 'Scholen open Noord'),
     ('2020-08-18', 'Max 6 gasten thuis'),
     ('2020-08-31', 'Scholen open Midden'),
     ('2020-09-20', 'Max 50/6, Horeca 01u'),
     ('2020-09-29', 'Max 30/3, horeca 22u'),
     ('2020-10-05', 'Mondkapjes VO'),
-    ('2020-10-14', 'Niveau Zeer Ernstig'),
+    ('2020-10-10', 'Schoolvak. Noord'),
+    ('2020-10-17', 'Schoolvak. Mid/Zuid'),
+    ('2020-10-14', 'Horeca dicht'),
+    ('2020-11-04', 'Verzwaring'),
     ], columns=['Date', 'Description'])
 df_restrictions['Date'] = pd.to_datetime(df_restrictions['Date']) + pd.Timedelta('12:00:00')
 df_restrictions.set_index('Date', inplace=True)
 
 
 Rt_rivm = pd.DataFrame.from_records([
+    ('2020-05-13T12:00', 0.80),
+    ('2020-05-18T12:00', 1.13),
+    ('2020-05-23T12:00', 0.88),
+    ('2020-05-30T12:00', 0.52),
+    ('2020-06-03T12:00', 0.96),
+    ('2020-06-08T12:00', 1.30),
+    ('2020-06-13T12:00', 0.73),
+    ('2020-06-18T12:00', 0.96),
+    ('2020-06-23T12:00', 0.92),
+    ('2020-06-28T12:00', 0.95),
+    ('2020-07-03T12:00', 1.39),
+    ('2020-07-08T12:00', 1.38),
+    ('2020-07-13T12:00', 1.22),
+    ('2020-07-18T12:00', 1.31),
+    ('2020-07-25T12:00', 1.38),
     ('2020-07-31T12:00', 1.22),
     ('2020-08-03T12:00', 1.02),
     ('2020-08-07T12:00', 0.96),
@@ -73,6 +96,8 @@ Rt_rivm = pd.DataFrame.from_records([
     ('2020-10-02T12:00', 1.22),
     ('2020-10-05T12:00', 1.12),
     ('2020-10-09T12:00', 1.16),
+    ('2020-10-12T12:00', 1.10),
+    ('2020-10-16T12:00', 1.11),
     ])
 Rt_rivm = pd.Series(data=Rt_rivm[1].to_numpy(), index=pd.to_datetime(Rt_rivm[0]), name='Rt_rivm')
 
@@ -258,8 +283,10 @@ def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
 
 
     y_lab = ax.get_ylim()[0]
+
     for res_t, res_d in df_restrictions['Description'].iteritems():
-        ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
+    #    if res_t >= t_min:
+            ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
 
 
     dfc = pd.DataFrame.from_records(
@@ -293,7 +320,7 @@ def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
         tl.set_ha('left')
 
 
-def plot_Rt(df, minpop=2e+5, ndays=100, lastday=-1, delay=10, mun_regexp='Nederland',
+def plot_Rt(df, minpop=5e6, ndays=100, lastday=-1, delay=10, mun_regexp='Nederland',
             Tc=4.0, Rt_rivm=None):
     """Plot daily-case trends (using global DataFrame df).
 
@@ -306,13 +333,14 @@ def plot_Rt(df, minpop=2e+5, ndays=100, lastday=-1, delay=10, mun_regexp='Nederl
     """
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    fig.subplots_adjust(top=0.90, bottom=0.085, left=0.09, right=0.83)
-
+    fig.subplots_adjust(top=0.90, bottom=0.085, left=0.09, right=0.93)
+    plt.xticks(rotation=-20)
     # dict: municitpality -> population
     muns = df_mun.loc[df_mun['Inwoners'] > minpop]['Inwoners'].to_dict()
     muns['Nederland'] = float(df_mun.sum())
 
     labels = [] # tuples (y, txt)
+
     for mun, n_inw in muns.items():
 
         if mun_regexp and not re.match(mun_regexp, mun):
@@ -323,7 +351,9 @@ def plot_Rt(df, minpop=2e+5, ndays=100, lastday=-1, delay=10, mun_regexp='Nederl
 
         fmt = 'o-' if ndays < 70 else '-'
         psize = 5 if ndays < 30 else 3
-        ax.plot(Rt, fmt, label=mun, markersize=psize)
+
+        label = 'Schatting' if mun_regexp == 'Nederland' else mun
+        ax.plot(Rt, fmt, label=label, markersize=psize)
 
         labels.append((Rt[-1], f' {mun}'))
 
@@ -335,19 +365,40 @@ def plot_Rt(df, minpop=2e+5, ndays=100, lastday=-1, delay=10, mun_regexp='Nederl
         ax.plot(Rt_rivm, 'ko-', markersize=4, label='RIVM')
 
     y_lab = ax.get_ylim()[0]
-    for res_t, res_d in df_restrictions['Description'].iteritems():
-        ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
 
-    lab_x = Rt.index[-1] + pd.Timedelta('1.2 d')
-    add_labels(ax, labels, lab_x)
+    # add_labels(ax, labels, lab_x)
     ax.grid(which='both')
     ax.axvline(Rt.index[-4], color='gray')
+    ax.axhline(1, color='k', linestyle='--')
+    ax.text(Rt.index[-4], ax.get_ylim()[1], Rt.index[-4].strftime("%d %b "),
+            rotation=90, horizontalalignment='right', verticalalignment='top')
+
     ax.set_title('Reproductiegetal o.b.v. positieve tests; laatste 3 dagen zijn een extrapolatie\n'
                  f'(Generatie-interval: {Tc:.3g} dg, rapportagevertraging {delay} dg)' )
     ax.set_ylabel('Reproductiegetal $R_t$')
 
-    #ax.set_ylim(0.05, None)
-    ax.set_xlim(Rt.index[0] - pd.Timedelta('12 h'), Rt.index[-1] + pd.Timedelta('1 d'))
+    # get second y axis
+    ax2 = ax.twinx()
+    T2s = np.array([-2, -4,-7, -10, -14, -21, -60, 9999, 60, 21, 14, 10, 7, 4, 2])
+    y2ticks = 2**(Tc/T2s)
+    y2labels = [f'{t2 if t2 != 9999 else "∞"}' for t2 in T2s]
+    ax2.set_yticks(y2ticks)
+    ax2.set_yticklabels(y2labels)
+    ax2.set_ylim(*ax.get_ylim())
+    ax2.set_ylabel('Halverings-/verdubbelingstijd (dagen)')
+
+
+
+    xlim = (Rt.index[0] - pd.Timedelta('12 h'), Rt.index[-1] + pd.Timedelta('3 d'))
+    ax.set_xlim(*xlim)
+    for res_t, res_d in df_restrictions['Description'].iteritems():
+        if res_t >= xlim[0] and res_t <= xlim[1]:
+            ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
+
+    ax.text(0.99, 0.98, '@hk_nien', transform=ax.transAxes,
+            verticalAlignment='top', horizontalAlignment='right',
+            rotation=90)
+
     ax.legend() # loc='lower left')
     for tl in ax.get_xticklabels():
         tl.set_ha('left')
@@ -397,15 +448,15 @@ if __name__ == '__main__':
 
     update_csv()
 
+
     plt.close('all')
+    plt.rcParams["date.autoformatter.day"] = "%d %b"
+    locale.setlocale(locale.LC_TIME, 'nl_NL.UTF-8')
     df = pd.read_csv('data/COVID-19_aantallen_gemeente_cumulatief.csv', sep=';')
     df = df.loc[~df.Municipality_code.isna()]
     df['Date_of_report'] = pd.to_datetime(df['Date_of_report'])
 
-
-    plt.close('all')
-
     print(f'CSV most recent date: {df["Date_of_report"].iat[-1]}')
 
-    plot_daily_trends(df, ndays=40, lastday=-1, use_r7=True, minpop=2e5)
-    plot_Rt(df, ndays=60, lastday=-1, minpop=4e5, delay=9, Rt_rivm=Rt_rivm)
+    plot_daily_trends(df, ndays=100, lastday=-1, use_r7=True, minpop=2e5)
+    plot_Rt(df, ndays=130, lastday=-1, minpop=4e5, delay=9, Rt_rivm=Rt_rivm)
