@@ -50,7 +50,7 @@ def add_holiday_regions(df_cov):
     for rule in rules:
         hrname = rule[0]
         for pmname in rule[1:]:
-            print(f'Applying {pmname} to {hrname}.')
+            # print(f'Applying {pmname} to {hrname}.') # DEBUG
             if pmname.startswith('P:'):
                 dfh.loc[dfh['Province'] == pmname[2:], 'HolRegion'] = hrname
             elif pmname.startswith('M:'):

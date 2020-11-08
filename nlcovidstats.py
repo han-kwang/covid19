@@ -113,7 +113,7 @@ def get_mun_data(df, mun, n_inw, lastday=-1):
     Special municipalities:
 
     - 'Nederland': all
-    - 'HR:Zuid', 'HR:Noord', 'HR:Midden': holiday regions.
+    - 'HR:Zuid', 'HR:Noord', 'HR:Midden', 'HR:Midden+Zuid': holiday regions.
     - 'P:xx': province
 
     Use data up to lastday.
@@ -121,6 +121,8 @@ def get_mun_data(df, mun, n_inw, lastday=-1):
 
     if mun == 'Nederland':
         df1 = df.groupby('Date_of_report').sum()
+    elif mun == 'HR:Midden+Zuid':
+        df1 = df.loc[df['HolRegion'].str.match('Midden|Zuid')].groupby('Date_of_report').sum()
     elif mun.startswith('HR:'):
         df1 = df.loc[df['HolRegion'] == mun[3:]].groupby('Date_of_report').sum()
     elif mun.startswith('P:'):
@@ -140,7 +142,7 @@ def get_mun_data(df, mun, n_inw, lastday=-1):
     if mun == 'Nederland':
         print(nc[-3:])
 
-    
+
     nc.iat[0] = 0
     nc7 = nc.rolling(7, center=True).mean()
     nc7a = nc7.to_numpy()
@@ -476,4 +478,4 @@ if __name__ == '__main__':
     plot_daily_trends(df, ndays=100, lastday=-1, use_r7=True, minpop=2e5)
     plot_Rt(df, ndays=130, lastday=-1, delay=9, Rt_rivm=Rt_rivm)
     plot_Rt(df, ndays=130, lastday=-1, delay=9, Rt_rivm=Rt_rivm,
-            regions='Nederland,HR:Noord,HR:Midden,HR:Zuid')
+            regions='HR:Noord,HR:Midden+Zuid')
