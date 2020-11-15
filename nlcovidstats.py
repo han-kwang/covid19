@@ -15,100 +15,135 @@ from pathlib import Path
 import time
 import locale
 from holiday_regions import add_holiday_regions
+import scipy.signal
 
 
-
-#%%
-
-df_mun = pd.read_csv('data/Regionale_kerncijfers_Nederland_15082020_130832.csv', sep=';')
-df_mun.rename(columns={
- #'Perioden',
- #"Regio's",
- 'Bevolking/Bevolkingssamenstelling op 1 januari/Totale bevolking (aantal)': 'total',
- 'Bevolking/Bevolkingssamenstelling op 1 januari/Burgerlijke staat/Bevolking 15 jaar of ouder/Inwoners 15 jaar of ouder (aantal)': 'n15plus',
- 'Bevolking/Bevolkingssamenstelling op 1 januari/Burgerlijke staat/Bevolking 15 jaar of ouder/Gehuwd (in % van  inwoners 15 jaar of ouder)': 'n15gehuwd',
- 'Bevolking/Bevolkingssamenstelling op 1 januari/Bevolkingsdichtheid (aantal inwoners per km²)': 'dichtheid',
- 'Bouwen en wonen/Woningvoorraad/Voorraad op 1 januari (aantal)': 'woningen',
- 'Milieu en bodemgebruik/Bodemgebruik/Oppervlakte/Totale oppervlakte (km²)': 'opp'
- }, inplace=True)
-
-df_mun = pd.DataFrame({'Municipality': df_mun['Regio\'s'], 'Inwoners': df_mun['total']})
-df_mun.set_index('Municipality', inplace=True)
-df_mun = df_mun.loc[~df_mun.Inwoners.isna()]
-import re
-df_mun.rename(index=lambda x: re.sub(r' \(gemeente\)$', '', x), inplace=True)
-
-df_restrictions = pd.DataFrame([
-    ('2020-05-11', 'Heropening, max 30'),
-    ('2020-06-01', 'Mondkapje OV'),
-    ('2020-07-01', "Max 100"),
-    ('2020-07-04', "Schoolvak. Noord"),
-    ('2020-07-11', "Schoolvak. Zuid"),
-    ('2020-07-18', "Schoolvak. Midden"),
-    ('2020-08-17', 'Scholen open Noord'),
-    ('2020-08-18', 'Max 6 gasten thuis'),
-    ('2020-08-31', 'Scholen open Midden'),
-    ('2020-09-20', 'Max 50/6, Horeca 01u'),
-    ('2020-09-29', 'Max 30/3, horeca 22u'),
-    ('2020-10-05', 'Mondkapjes VO'),
-    ('2020-10-10', 'Schoolvak. Noord'),
-    ('2020-10-17', 'Schoolvak. Mid/Zuid'),
-    ('2020-10-14', 'Horeca dicht'),
-    ('2020-11-04', 'Verzwaring'),
-    ], columns=['Date', 'Description'])
-df_restrictions['Date'] = pd.to_datetime(df_restrictions['Date']) + pd.Timedelta('12:00:00')
-df_restrictions.set_index('Date', inplace=True)
-
-
-Rt_rivm = pd.DataFrame.from_records([
-    ('2020-05-13T12:00', 0.80),
-    ('2020-05-18T12:00', 1.13),
-    ('2020-05-23T12:00', 0.88),
-    ('2020-05-30T12:00', 0.52),
-    ('2020-06-03T12:00', 0.96),
-    ('2020-06-08T12:00', 1.30),
-    ('2020-06-13T12:00', 0.73),
-    ('2020-06-18T12:00', 0.96),
-    ('2020-06-23T12:00', 0.92),
-    ('2020-06-28T12:00', 0.95),
-    ('2020-07-03T12:00', 1.39),
-    ('2020-07-08T12:00', 1.38),
-    ('2020-07-13T12:00', 1.22),
-    ('2020-07-18T12:00', 1.31),
-    ('2020-07-25T12:00', 1.38),
-    ('2020-07-31T12:00', 1.22),
-    ('2020-08-03T12:00', 1.02),
-    ('2020-08-07T12:00', 0.96),
-    ('2020-08-10T12:00', 0.94),
-    ('2020-08-14T12:00', 0.95),
-    ('2020-08-17T12:00', 0.99),
-    ('2020-08-21T12:00', 1.15),
-    ('2020-08-24T12:00', 1.17),
-    ('2020-08-28T12:00', 1.39),
-    ('2020-08-31T12:00', 1.36),
-    ('2020-09-04T12:00', 1.34),
-    ('2020-09-07T12:00', 1.24),
-    ('2020-09-11T12:00', 1.28),
-    ('2020-09-14T12:00', 1.18),
-    ('2020-09-18T12:00', 1.20),
-    ('2020-09-21T12:00', 1.16),
-    ('2020-09-24T12:00', 1.28),
-    ('2020-09-27T12:00', 1.31),
-    ('2020-10-02T12:00', 1.22),
-    ('2020-10-05T12:00', 1.12),
-    ('2020-10-09T12:00', 1.16),
-    ('2020-10-12T12:00', 1.10),
-    ('2020-10-16T12:00', 1.11),
-    ])
-Rt_rivm = pd.Series(data=Rt_rivm[1].to_numpy(), index=pd.to_datetime(Rt_rivm[0]), name='Rt_rivm')
+try:
+    DATA_PATH = Path(__file__).parent / 'data'
+except NameError:
+    DATA_PATH = Path('data')
 
 
 #%%
 
 
 
-def get_mun_data(df, mun, n_inw, lastday=-1):
+def load_municipality_data():
+    """Return municipality dataframe; index=municipality, column: 'Inwoners'"""
+
+    path = DATA_PATH / 'Regionale_kerncijfers_Nederland_15082020_130832.csv'
+
+    df_mun = pd.read_csv(path, sep=';')
+    df_mun.rename(columns={
+     #'Perioden',
+     #"Regio's",
+     'Bevolking/Bevolkingssamenstelling op 1 januari/Totale bevolking (aantal)': 'total',
+     'Bevolking/Bevolkingssamenstelling op 1 januari/Burgerlijke staat/Bevolking 15 jaar of ouder/Inwoners 15 jaar of ouder (aantal)': 'n15plus',
+     'Bevolking/Bevolkingssamenstelling op 1 januari/Burgerlijke staat/Bevolking 15 jaar of ouder/Gehuwd (in % van  inwoners 15 jaar of ouder)': 'n15gehuwd',
+     'Bevolking/Bevolkingssamenstelling op 1 januari/Bevolkingsdichtheid (aantal inwoners per km²)': 'dichtheid',
+     'Bouwen en wonen/Woningvoorraad/Voorraad op 1 januari (aantal)': 'woningen',
+     'Milieu en bodemgebruik/Bodemgebruik/Oppervlakte/Totale oppervlakte (km²)': 'opp'
+     }, inplace=True)
+
+    df_mun = pd.DataFrame({'Municipality': df_mun['Regio\'s'], 'Inwoners': df_mun['total']})
+    df_mun.set_index('Municipality', inplace=True)
+    df_mun = df_mun.loc[~df_mun.Inwoners.isna()]
+    import re
+    df_mun.rename(index=lambda x: re.sub(r' \(gemeente\)$', '', x), inplace=True)
+    return df_mun
+
+
+def load_restrictions():
+    """Return restrictions DataFrame; index=DateTime, column=Description."""
+
+    df = pd.read_csv(DATA_PATH / 'restrictions.csv')
+    df['Date'] = pd.to_datetime(df['Date']) + pd.Timedelta('12:00:00')
+    df.set_index('Date', inplace=True)
+    return df
+
+def load_Rt_rivm():
+    """Return Rt DataFrame, with Date index (12:00), columns R, Rmax, Rmin."""
+
+    # File source:
+    # https://raw.githubusercontent.com/J535D165/CoronaWatchNL/master/data-dashboard/data-reproduction/RIVM_NL_reproduction_index.csv
+    df_full = pd.read_csv('data/rivm_reproduction_number.csv')
+    df_full['Datum'] = pd.to_datetime(df_full['Datum']) + pd.Timedelta(12, 'h')
+    df = df_full[df_full['Type'] == ('Reproductie index')][['Datum', 'Waarde']].copy()
+    df.set_index('Datum', inplace=True)
+    df.rename(columns={'Waarde': 'R'}, inplace=True)
+    df['Rmax'] = df_full[df_full['Type'] == ('Maximum')][['Datum', 'Waarde']].set_index('Datum')
+    df['Rmin'] = df_full[df_full['Type'] == ('Minimum')][['Datum', 'Waarde']].set_index('Datum')
+    return df
+
+
+def update_cum_cases_csv(force=False):
+    """Update 'cumulative data' csv file (if not recently updated)."""
+
+    fpath = DATA_PATH / 'COVID-19_aantallen_gemeente_cumulatief.csv'
+    if fpath.is_file():
+        local_file_data = fpath.read_bytes()
+    else:
+        local_file_data = None
+
+    if not force:
+        if fpath.is_file():
+            # estimated last update
+            tm = time.time()
+            loc_time = time.localtime(tm)
+            day_seconds = loc_time[3]*3600 + loc_time[4]*60 + loc_time[5]
+            tm_latest = tm - day_seconds + 14*3600
+            if tm_latest > tm:
+                tm_latest -= 86400
+
+            tm_file = fpath.stat().st_mtime
+            if tm_file > tm_latest + 1800: # after 14:30
+                print('Not updating file; seems to bxe recent enough.')
+                return
+            if tm_file > tm_latest:
+                print('file may or may not be the latest version.')
+                print('Use update_csv(force=True) to be sure.')
+                return
+
+
+    url = 'https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_cumulatief.csv'
+    print(f'Getting new file ...')
+    with urllib.request.urlopen(url) as response:
+        data_bytes = response.read()
+        if data_bytes == local_file_data:
+            print(f'{fpath}: already latest version.')
+        else:
+            fpath.write_bytes(data_bytes)
+            print(f'Wrote {fpath} .')
+
+
+def load_cumulative_cases():
+    """Return df with cumulative cases by municipality. Retrieve from internet if needed."""
+
+    update_cum_cases_csv()
+
+    df = pd.read_csv('data/COVID-19_aantallen_gemeente_cumulatief.csv', sep=';')
+    # Removing 'municipality unknown' records.
+    # Not clear; including these, the daily numbers are higher than the official
+    # report. With them removed, they are lower.
+    # Examples:
+    # date: incl NA, w/o NA, nos.nl, allecijfers.nl
+    # 2020-11-08: 5807 5651 5703 5664
+    # 2020-11-06: 7638 7206 7272 7242
+    df = df.loc[~df.Municipality_code.isna()] # Remove NA records.
+    df = add_holiday_regions(df)
+    df['Date_of_report'] = pd.to_datetime(df['Date_of_report'])
+    return df
+
+
+
+
+def get_mun_data(df, mun, n_inw, lastday=-1, printrows=0):
     """Return dataframe for one municipality, added 'Delta', 'Delta7r' columns.
+
+    Parameter:
+
+    - n_inw: minimum population
+    - printrows: print this many of the most recent rows
 
     Special municipalities:
 
@@ -139,8 +174,8 @@ def get_mun_data(df, mun, n_inw, lastday=-1):
 
     # nc: number of cases
     nc = df1['Total_reported'].diff()
-    if mun == 'Nederland':
-        print(nc[-3:])
+    if printrows > 0:
+        print(nc[-printrows:])
 
 
     nc.iat[0] = 0
@@ -269,9 +304,6 @@ def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
 
         df1 = get_mun_data(df, mun, n_inw, lastday=lastday)
         df1 = df1.iloc[-ndays:]
-        if mun == 'Nederland':
-            print(df1.iloc[-3:][['Delta']]*n_inw)
-
 
         fmt = 'o-' if ndays < 70 else '-'
         psize = 5 if ndays < 30 else 3
@@ -337,6 +369,9 @@ def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
     for tl in ax.get_xticklabels():
         tl.set_ha('left')
 
+    fig.canvas.set_window_title(f'Case trends (ndays={ndays})')
+    fig.show()
+
 
 def plot_Rt(df, ndays=100, lastday=-1, delay=9,
             regions='Nederland',
@@ -354,7 +389,7 @@ def plot_Rt(df, ndays=100, lastday=-1, delay=9,
     """
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    fig.subplots_adjust(top=0.90, bottom=0.085, left=0.09, right=0.93)
+    fig.subplots_adjust(top=0.90, bottom=0.085, left=0.09, right=0.92)
     plt.xticks(rotation=-20)
     # dict: municitpality -> population
 
@@ -380,7 +415,19 @@ def plot_Rt(df, ndays=100, lastday=-1, delay=9,
         raise ValueError(f'No data to plot.')
 
     if Rt_rivm is not None:
-        ax.plot(Rt_rivm, 'ko-', markersize=4, label='RIVM')
+        tm_lo, tm_hi = Rt.index[[0, -1]] # lowest timestamp
+        tm_rivm_est = Rt_rivm[Rt_rivm['R'].isna()].index[0] # 1st index with NaN
+        # final values
+        Rt_rivm_final = Rt_rivm.loc[tm_lo:tm_rivm_est, 'R']
+        ax.plot(Rt_rivm_final.iloc[:-1], 'k-', label='RIVM')
+        ax.plot(Rt_rivm_final.iloc[-2::-7], 'ko', markersize=4)
+        # estimates
+        Rt_rivm_est = Rt_rivm.loc[tm_rivm_est-pd.Timedelta(1, 'd'):tm_hi+pd.Timedelta(12, 'h')]
+        # print(Rt_rivm_est)
+        ax.fill_between(Rt_rivm_est.index, Rt_rivm_est['Rmin'], Rt_rivm_est['Rmax'],
+                        color='#bbbbbb', label='RIVM prognose')
+
+
 
     y_lab = ax.get_ylim()[0]
 
@@ -421,61 +468,64 @@ def plot_Rt(df, ndays=100, lastday=-1, delay=9,
     for tl in ax.get_xticklabels():
         tl.set_ha('left')
 
+    fig.canvas.set_window_title(f'Rt ({", ".join(regions)[:30]}, ndays={ndays})')
+    fig.show()
 
-def update_csv(force=False):
-    """Update csv file (if not recently updated)."""
+def plot_Rt_oscillation():
+    """Uses global Rt_rivm variable."""
 
-    fpath = Path('data/COVID-19_aantallen_gemeente_cumulatief.csv')
-    if fpath.is_file():
-        local_file_data = fpath.read_bytes()
-    else:
-        local_file_data = None
+    fig, axs = plt.subplots(2, 1, tight_layout=True)
+    Rr = Rt_rivm['R'][~Rt_rivm['R'].isna()].to_numpy()
+    Rr = Rr[-120:]
+    Rr_smooth = scipy.signal.savgol_filter(Rr, 15, 2)
 
-    if not force:
-        if fpath.is_file():
-            # estimated last update
-            tm = time.time()
-            loc_time = time.localtime(tm)
-            day_seconds = loc_time[3]*3600 + loc_time[4]*60 + loc_time[5]
-            tm_latest = tm - day_seconds + 14*3600
-            if tm_latest > tm:
-                tm_latest -= 86400
-
-            tm_file = fpath.stat().st_mtime
-            if tm_file > tm_latest + 1800: # after 14:30
-                print('Not updating file; seems to bxe recent enough.')
-                return
-            if tm_file > tm_latest:
-                print('file may or may not be the latest version.')
-                print('Use update_csv(force=True) to be sure.')
-                return
+    ax = axs[0]
+    n = len(Rr)
+    ts = np.arange(n)/7
+    ax.plot(ts, Rr, label='Rt (RIVM)')
+    ax.plot(ts, Rr_smooth, label='Rt smooth', zorder=-1)
+    ax.plot(ts, Rr - Rr_smooth, label='Difference')
+    ax.set_xlabel('Time (wk)')
+    ax.set_ylabel('R')
+    ax.set_xlim(ts[0], ts[-1])
+    ax.legend()
+    ax.grid()
+    ax = axs[1]
+    # window = 1 - np.linspace(-1, 1, len(Rr))**2
 
 
-    url = 'https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_cumulatief.csv'
-    print(f'Getting new file ...')
-    with urllib.request.urlopen(url) as response:
-        data_bytes = response.read()
-        if data_bytes == local_file_data:
-            print(f'{fpath}: already latest version.')
-        else:
-            fpath.write_bytes(data_bytes)
-            print(f'Wrote {fpath} .')
+    window = scipy.signal.windows.tukey(n, alpha=(n-14)/n)
+    spectrum = np.fft.rfft((Rr-Rr_smooth) * window)
+    freqs = 7/len(Rr) * np.arange(len(spectrum))
+    ax.plot(freqs, np.abs(spectrum)**2)
+    ax.set_xlabel('Frequency (1/wk)')
+    ax.set_ylabel('Power')
+    ax.grid()
+
+    fig.canvas.set_window_title('Rt oscillation')
+
+    fig.show()
+
 
 if __name__ == '__main__':
 
-
-    update_csv()
-    plt.close('all')
+    # Note: need to run this twice before NL locale takes effect.
+    locale.setlocale(locale.LC_ALL, 'nl_NL.UTF-8')
     plt.rcParams["date.autoformatter.day"] = "%d %b"
-    locale.setlocale(locale.LC_TIME, 'nl_NL.UTF-8')
-    df = pd.read_csv('data/COVID-19_aantallen_gemeente_cumulatief.csv', sep=';')
-    df = df.loc[~df.Municipality_code.isna()]
-    df = add_holiday_regions(df)
-    df['Date_of_report'] = pd.to_datetime(df['Date_of_report'])
+
+    df_mun = load_municipality_data()
+    df = load_cumulative_cases()
+    Rt_rivm = load_Rt_rivm()
+    df_restrictions = load_restrictions()
 
     print(f'CSV most recent date: {df["Date_of_report"].iat[-1]}')
 
+    plt.close('all')
+
+    get_mun_data(df, 'Nederland', 5e6, printrows=5)
+
+    plot_Rt_oscillation()
     plot_daily_trends(df, ndays=100, lastday=-1, use_r7=True, minpop=2e5)
     plot_Rt(df, ndays=130, lastday=-1, delay=9, Rt_rivm=Rt_rivm)
-    plot_Rt(df, ndays=130, lastday=-1, delay=9, Rt_rivm=Rt_rivm,
+    plot_Rt(df, ndays=40, lastday=-1, delay=9, Rt_rivm=Rt_rivm,
             regions='HR:Noord,HR:Midden+Zuid')

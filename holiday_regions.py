@@ -23,7 +23,7 @@ def add_holiday_regions(df_cov):
 
     # Build dataframe with columns 'Municipality_name', 'Province', 'HolRegion'.
     dfh = df_cov[['Municipality_name', 'Province']].drop_duplicates()
-    dfh = dfh.loc[~dfh['Municipality_name'].isna()]
+    #dfh = dfh.loc[~dfh['Municipality_name'].isna()]
     dfh['HolRegion'] = None
 
     # Definitions holiday regions
