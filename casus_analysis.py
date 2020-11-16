@@ -19,7 +19,18 @@ import matplotlib
 # CDPATH: path of casus data.
 CDPATH = Path(__file__).parent / 'data-casus'
 DPATH = Path(__file__).parent / 'data'
-MAX_CPUS = 4
+MAX_CPUS = 6 # at most this many or 75% of availble CPUs.
+
+def PoolNCPU(msg=None):
+    """Return Pool reasonable number of CPUs to use.
+
+    Optional message that may include {ncpu}.
+    """
+    # Load data with multi CPU, don't eat up all CPU
+    ncpu = min(MAX_CPUS, max(1, cpu_count() * 3//4))
+    if msg:
+        print(msg.format(ncpu=ncpu))
+    return Pool(ncpu)
 
 def load_casus_data(date):
     """Return DataFrame with casus data.
@@ -182,10 +193,7 @@ def load_merged_summary(date_lo, date_hi):
         fdates.append(date_str)
         date += pd.Timedelta(1, 'd')
 
-    # Load data with multi CPU, don't eat up all CPU
-    ncpu = min(MAX_CPUS, max(1, cpu_count() * 3//4))
-    print(f'Loading casus data (using {ncpu} processes')
-    with Pool(ncpu) as pool:
+    with PoolNCPU('Loading casus data (using {ncpu} processes)') as pool:
         dfsums = pool.map(_load_one_df, fdates)
         print()
     dfsmerged = pd.concat(dfsums)
@@ -220,7 +228,33 @@ def load_merged_summary_csv(date_lo='2020-07-01', date_hi='2099-01-01'):
     return df
 
 
+def _add_eDOO_to_df1(args):
+    """Helper for add_eDOO_to_summary().
 
+    args: (dtf, df1, delay_don, delay_dpl, blur).
+
+    Return (dtf, updated_df1)
+    """
+    (dtf, df1, delay_don, delay_dpl, blur) = args
+    print(f'({_ymd(dtf)}) ', end='', flush=True)
+
+    for col, delay in [('DON', delay_don), ('DPL', delay_dpl)]:
+        df2 = df1[col].reset_index() # columns 'Date_statistics'
+        df2['Date_statistics'] -= pd.Timedelta(delay, 'd')
+
+        # df1a: shifted dataframe, index Date_statistics, column col.
+        df1a = df1[[]].merge(df2, 'left', left_index=True, right_on='Date_statistics')
+        df1a.set_index('Date_statistics', inplace=True)
+        df1a[df1a[col].isna()] = 0
+        if blur > 0 and len(df1a) > (2*blur + 1):
+            kernel = np.full(2*blur+1, np.around(1/(2*blur+1), 1 + (blur > 2)))
+            kernel[blur] += 1 - kernel.sum()
+            df1a[col] = np.convolve(df1a[col], kernel, mode='same')
+        df1[f's{col}'] = df1a[col]
+        df1['eDOO'] += df1a[col]
+    df1['Date_file'] = dtf
+    df1 = df1.reset_index().set_index(['Date_file', 'Date_statistics'])
+    return dtf, df1
 
 def add_eDOO_to_summary(df, delay_don=3, delay_dpl=2, blur=1):
     """Add eDOO column - estimated DOO - to summary dataframe.
@@ -238,31 +272,19 @@ def add_eDOO_to_summary(df, delay_don=3, delay_dpl=2, blur=1):
     df['sDPL'] = 0
 
     file_dates = df.index.get_level_values('Date_file').unique().sort_values()
+    # List of tuples (fdate, df_slice)
+    map_input = [
+        (dtf, df.loc[dtf].copy(), delay_don, delay_dpl, blur) # dataframe for one file, index Date_statistics
+        for dtf in file_dates
+        ]
+    cols = ['eDOO', 'sDON', 'sDPL']
 
-    for dtf in file_dates:
-        print(f'\rAdding eDOO for {dtf.strftime("%Y-%m-%d")}...', end='',
-              flush=True)
-        # loop over file dates.
-        df1 = df.loc[dtf].copy() # dataframe for one file, index Date_statistics
-        for col, delay in [('DON', delay_don), ('DPL', delay_dpl)]:
-            df2 = df1[col].reset_index() # columns 'Date_statistics'
-            df2['Date_statistics'] -= pd.Timedelta(delay, 'd')
+    with PoolNCPU('Adding eDOO ({ncpu} processes)') as pool:
+        map_output = pool.map(_add_eDOO_to_df1, map_input)
 
-            # df1a: shifted dataframe, index Date_statistics, column col.
-            df1a = df1[[]].merge(df2, 'left', left_index=True, right_on='Date_statistics')
-            df1a.set_index('Date_statistics', inplace=True)
-            df1a[df1a[col].isna()] = 0
-            if blur > 0 and len(df1a) > (2*blur + 1):
-                kernel = np.full(2*blur+1, np.around(1/(2*blur+1), 1 + (blur > 2)))
-                kernel[blur] += 1 - kernel.sum()
-                df1a[col] = np.convolve(df1a[col], kernel, mode='same')
-            df1[f's{col}'] = df1a[col]
-            df1['eDOO'] += df1a[col]
-        df1['Date_file'] = dtf
-        df1 = df1.reset_index().set_index(['Date_file', 'Date_statistics'])
-        for col in ['eDOO', 'sDON', 'sDPL']:
-            df.loc[(dtf,), col] = df1[col]
-    print()
+    print('\nMerging...)
+    for (dtf, df1) in map_output:
+        df.loc[(dtf,), cols] = df1[cols]
     return df
 
 
