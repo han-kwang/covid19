@@ -311,6 +311,9 @@ class GData:
     is the estimated fraction of the true number of DOO cases for
     that stat_date.
 
+    The calculation method is essentially the method
+    proposed by Twitter @bslagter .
+
     Attributes:
 
     - G: array (m,) with G values
