@@ -7,6 +7,7 @@ Created on Sun Nov  8 22:44:09 2020
 """
 
 import re
+import locale
 from pathlib import Path
 from multiprocessing import Pool, cpu_count
 import urllib
@@ -30,7 +31,9 @@ def PoolNCPU(msg=None):
     ncpu = min(MAX_CPUS, max(1, cpu_count() * 3//4))
     if msg:
         print(msg.format(ncpu=ncpu))
+
     return Pool(ncpu)
+
 
 def load_casus_data(date):
     """Return DataFrame with casus data.
@@ -152,7 +155,7 @@ def download_rivm_casus_files():
         url = url_template.format(date=fdate)
         # @@ debug
         # url = 'https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_cumulatief.csvx'
-        print(f'Getting casus data {fdate} ...')
+        print(f'Downloading casus data for {fdate} ...')
         fpath = CDPATH / (fname_template.format(date=fdate) + '.gz')
         with urllib.request.urlopen(url) as response:
             data_bytes = response.read()
@@ -172,7 +175,8 @@ def download_rivm_casus_files():
 def _load_one_df(date):
     """Helper function for load_merged_summary in multiproc pool."""
 
-    print(f'({date}) ', end='', flush=True)
+    # print(f'({date}) ', end='', flush=True)
+    print('.', end='', flush=True)
     return load_casus_summary(date).reset_index()
 
 def load_merged_summary(date_lo, date_hi):
@@ -193,7 +197,8 @@ def load_merged_summary(date_lo, date_hi):
         fdates.append(date_str)
         date += pd.Timedelta(1, 'd')
 
-    with PoolNCPU('Loading casus data (using {ncpu} processes)') as pool:
+    msg = f'Loading casus data for {len(fdates)} days (using {{ncpu}} processes)'
+    with PoolNCPU(msg) as pool:
         dfsums = pool.map(_load_one_df, fdates)
         print()
     dfsmerged = pd.concat(dfsums)
@@ -236,7 +241,7 @@ def _add_eDOO_to_df1(args):
     Return (dtf, updated_df1)
     """
     (dtf, df1, delay_don, delay_dpl, blur) = args
-    print(f'({_ymd(dtf)}) ', end='', flush=True)
+    print('.', end='', flush=True)
 
     for col, delay in [('DON', delay_don), ('DPL', delay_dpl)]:
         df2 = df1[col].reset_index() # columns 'Date_statistics'
@@ -279,12 +284,14 @@ def add_eDOO_to_summary(df, delay_don=3, delay_dpl=2, blur=1):
         ]
     cols = ['eDOO', 'sDON', 'sDPL']
 
-    with PoolNCPU('Adding eDOO ({ncpu} processes)') as pool:
+    msg = f'Adding eDOO for {len(map_input)} days ({{ncpu}} processes)'
+    with PoolNCPU(msg) as pool:
         map_output = pool.map(_add_eDOO_to_df1, map_input)
 
-    print('\nMerging...)
+    print('\nMerging...', end='', flush=True)
     for (dtf, df1) in map_output:
         df.loc[(dtf,), cols] = df1[cols]
+    print('done.')
     return df
 
 
@@ -360,12 +367,13 @@ class GData:
         self.date_range = [pd.to_datetime(x) for x in date_range[:2]]
 
         self.iG = 1/G
-        self.iG[np.abs(self.iG) > 10] = np.nan
+        self.iG[self.G < 2*self.eG] = np.nan
         self.eiG = self.eG*self.iG**2
 
 
     @classmethod
-    def from_doo_df(cls, df, m=18, date_range=('2020-07-01', '2099-01-01')):
+    def from_doo_df(cls, df, m=18, date_range=('2020-07-01', '2099-01-01'),
+                    dow=None):
         """Initialize from DataFrame.
 
         Parameters:
@@ -373,6 +381,7 @@ class GData:
         - df: dataframe with eDOO column and multi-index.
         - date_range: (date_start, date_end) for Date_file index
         - m: number of days for estimation function
+        - dow: filter by reported day of week (0=Monday, 6=Sunday), optional.
 
         Return:
 
@@ -390,14 +399,18 @@ class GData:
         n = len(fdates)
         if n <= m:
             raise ValueError(f'm={m}: must be smaller than date range.')
+        if dow is not None and n-m < 14:
+            raise ValueError(f'If dow is specified, require n-m >= 14.')
 
         # build report matrix r[i, j], shape (n, m)
         # corresponding to eDOO at fdate=n-i, sdate=n-i-j
         rmat = np.zeros((n, m))
-
+        dows = np.zeros(n) # day of week corresponding to rmat rows.
         for i in range(n):
-            edoo = df1.loc[(fdates[n-i-1],), 'eDOO']
+            fdate = fdates[n-i-1]
+            edoo = df1.loc[(fdate,), 'eDOO']
             rmat[i, :] = edoo[-1:-m-1:-1]
+            dows[i] = fdate.dayofweek
 
         # If f[i+j] is the true number of cases at sdate=n-i-j,
         # then we search a function G[j] such that r[i,j] = f[i+j] * G[j].
@@ -409,18 +422,24 @@ class GData:
         ijm1 = ii.reshape(-1, 1) + jj + (1-m)
 
         G = rmat[m:n, :] / rmat[ijm1, -1]
-
-
         # Now weighted average (more weight to high case counts).
+        # also apply dow filter here.
         weights = rmat[ijm1, -1].mean(axis=1).reshape(-1, 1)
+
+        if dow is not None:
+            weights *= (dows[m:n] == dow).reshape(-1, 1)
+
         Gavg = np.sum(G*weights, axis=0) / weights.sum()
-        sigma = (G - Gavg).std(axis=0)
+        sigma = (G - Gavg).std(axis=0, ddof=1)
 
         return cls(Gavg, sigma, [fdates[0], fdates[-1]])
 
 
-    def plot(self, other_Gs=None):
-        """Plot. Optionally plot other Gdata (list) as well."""
+    def plot(self, other_Gs=None, labels=None):
+        """Plot. Optionally plot other Gdata (list) as well.
+
+        - labels: optional list of labels for curves.
+        """
 
         fig, axs = plt.subplots(2, 1, figsize=(7, 5), tight_layout=True, sharex=True)
         # cm = ax.matshow(G)
@@ -435,6 +454,16 @@ class GData:
         else:
             all_Gs = [self] + list(other_Gs)
 
+        if labels is not None and len(labels) != len(all_Gs):
+            raise IndexError(f'labels: mismatch in entries for number of curves.')
+
+        if labels is None:
+            labels = [
+                f'{_ymd(gd.date_range[0])} .. {_ymd(gd.date_range[1])}'
+                for gd in gds
+                ]
+
+
         ax = axs[0]
 
         ax.set_ylabel('DOO coverage')
@@ -446,7 +475,7 @@ class GData:
         ax.set_ylim(0.8, 5)
 
         color_cycle = plt.rcParams['axes.prop_cycle']()
-        for gd in all_Gs:
+        for gd, label in zip(all_Gs, labels):
             color = next(color_cycle)['color']
             xs = np.arange(len(gd.G))
 
@@ -458,7 +487,7 @@ class GData:
             axs[1].set_xlim(xs[0], xs[-1]+0.2)
             axs[1].plot(
                 xs, gd.iG, 'o-',
-                label=f'{_ymd(gd.date_range[0])} .. {_ymd(gd.date_range[1])}')
+                label=label)
             axs[1].fill_between(
                 xs, gd.iG-gd.eiG, gd.iG+gd.eiG, zorder=-1,
                 color=color, alpha=0.15
@@ -467,10 +496,124 @@ class GData:
         axs[1].legend()
         fig.show()
 
+    def create_df_nDOO(self, df):
+        """Create DataFrame with nDOO, enDOO columns.
+
+        Parameter:
+
+        - df: DataFrame with Date_statistics index, eDOO column.
+          The most recent date is assumed to be date zero.
+          It won't handle missing dates.
+
+        Return:
+
+        - DataFrame with columns:
+
+            - Date: date (index)
+            - nDOO: estimated number of new date-of-onset cases
+            - nDOO_err: estimated standard error on nDOO.
+        """
+
+        if df.index.name != 'Date_statistics':
+            raise KeyError('df must have single index "Date_statistics".')
+
+        df = df.sort_index()
+        m = len(self.iG)
+
+        new_df = pd.DataFrame(index=df.index)
+        new_df['nDOO'] = df['eDOO']
+        new_df['nDOO_err'] = 0.0
+
+        dslice = slice(df.index[-m], df.index[-1])
+
+        new_df.loc[dslice, 'nDOO'] *= self.iG[::-1]
+        new_df.loc[dslice, 'nDOO_err'] = new_df.loc[dslice, 'nDOO'] * self.eiG[::-1]
+
+        for col in ['nDOO', 'nDOO_err']:
+            data = new_df.loc[dslice, col]
+            data[data >= 100] = np.around(data[data >= 100], 0)
+            data = np.around(data, 1)
+            new_df.loc[dslice, col] = data
+
+        return new_df
+
+    def plot_nDOO(self, df_eDOO):
+        """Plot one or more DataFrames with eDOO data."""
+
+        if isinstance(df_eDOO, pd.DataFrame):
+            df_eDOO = [df_eDOO]
+
+        fig, ax = plt.subplots(tight_layout=True, figsize=(10, 5))
+        color_cycle = plt.rcParams['axes.prop_cycle']()
+        for dfe in df_eDOO:
+            dfn = self.create_df_nDOO(dfe)
+            color = next(color_cycle)['color']
+            ax.semilogy(dfn['nDOO'], color=color, label=_ymd(dfn.index[-1]))
+
+            dfne = dfn.iloc[-len(self.iG):]
+            ax.fill_between(
+                dfne.index, dfne['nDOO']-dfne['nDOO_err'],
+                dfne['nDOO']+dfne['nDOO_err'],
+                color=color, alpha=0.2, zorder=-1
+                )
+        ax.set_xlabel('Datum eerste ziektedag')
+        ax.set_ylabel('Aantal')
+        ax.legend()
+        ax.grid()
+        fig.show()
+
+def analyze_dow_effect(df, m=18, drange=('2020-07-01', '2099-01-01')):
+    """Analyze day-of-week effect on correction factor.
+
+    Parameters:
+
+    - df: DataFrame with multi-index and column eDOO.
+    - drange: Date range for report dates.
+    """
+
+    gds = [
+           GData.from_doo_df(df, m=18, date_range=drange, dow=dow)
+           for dow in [0, 1, 2, 3, 4, 5, 6, None]
+        ]
+    labels = 'maandag,dinsdag,woensdag,donderdag,vrijdag,zaterdag,zondag,alle'.split(',')
+
+    gds[0].plot(other_Gs=gds[1:], labels=labels)
+    gds[0].plot(other_Gs=[gds[4], gds[7]],
+                labels=['maandag', 'donderdag', 'alle'])
+
+    # Isolate date effect on correction factor
+    iGs = np.array([gd.iG for gd in gds]) # (8, m) array
+    iGratios = iGs[:7] / iGs[7] # shape (7, m)
+
+    fig, ax = plt.subplots(tight_layout=True, figsize=(8, 4))
+    for iGr, label in zip(iGratios, labels):
+        ax.plot(np.arange(m), iGr, 'o-', label=label)
+
+    ax.set_xlabel('Dagen geleden')
+    ax.set_ylabel('Correctiefactor-correctie')
+    ax.legend()
+    ax.grid()
+    ax.set_title('Correctiefactor nieuwe ziekmeldingen, effect van rapportagedag\n'
+                 f'(Tijdvak {_ymd(gds[0].date_range[0])} .. {_ymd(gds[0].date_range[1])})')
+    fig.show()
+
+
+
+
+
+    # Plot date effect on correction factor
+
+plt.close('all')
+
+analyze_dow_effect(df, drange=('2020-09-01', '2099-01-01'))
+#%%
 
 if __name__ == '__main__':
     # Note, because of multiprocessing for data loading,
     # avoid adding interactive/slow code outside the main block.
+
+    # Note: need to run this twice before NL locale takes effect.
+    locale.setlocale(locale.LC_ALL, 'nl_NL.UTF-8')
 
     if download_rivm_casus_files():
         # If there is new data, process it.
@@ -487,12 +630,24 @@ if __name__ == '__main__':
         ('2020-07-01', '2020-08-15'),
         ('2020-08-01', '2020-09-15'),
         ('2020-09-01', '2020-10-15'),
-        ('2020-10-01', '2020-11-14')
+        ('2020-10-01', '2020-11-16')
         ]
 
+
+    analyze_dow_effect(df)
+#%%
+    print('gdata...')
     gds = [
            GData.from_doo_df(df, m=18, date_range=dr)
            for dr in dranges
         ]
+    print('done.')
     gds[0].plot(gds[1:])
+
+    dfns = [
+        df.loc[fdate].reset_index(0)
+        for fdate in ['2020-11-16', '2020-11-01', '2020-11-08', '2020-10-15',
+                      '2020-10-01']
+        ]
+    gds[3].plot_nDOO(dfns)
 
