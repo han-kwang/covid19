@@ -1,6 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
+"""Module for casus analysis. Import this.
+
+Functions:
+
+- set_conf(): set global parameters (paths, cpu usage).
+- download_rivm_casus_files(): download casus file (via github.com/mzelst)
+- load_casus_data(): Return DataFrame with casus data from one RIVM csv file.
+- load_casus_summary(): Load casus data and summarize into dataframe.
+- load_merged_summary(): load combined summaries over range of file dates,
+  from csv file as created by create_merged_summary_csv()
+- create_merged_summary_csv(): create csv file with merged summary data.
+- add_eDOO_to_summary(): add eDOO (estimated DOO) column to summary data.
+- add_deltas_to_summary(): add changes in DOO etc. from file date to file date.
+  (this is not very useful.)
+- save_data_cache(): save a dataframe or other structure to cache file
+- load_data_cache(): load a dataframe or othor structure from cache file
+- PoolNCPU: multiprocessing.Pool wrapper.
+
+Classes:
+
+- DOOCorrection: correction factors for recent daily eDOO values.
+
 Created on Sun Nov  8 22:44:09 2020
 
 @author: @hk_nien
@@ -8,6 +29,8 @@ Created on Sun Nov  8 22:44:09 2020
 
 import re
 import locale
+import pickle
+import time
 from pathlib import Path
 from multiprocessing import Pool, cpu_count
 import urllib
@@ -17,26 +40,59 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 
-# CDPATH: path of casus data.
-CDPATH = Path(__file__).parent / 'data-casus'
-DPATH = Path(__file__).parent / 'data'
-MAX_CPUS = 6 # at most this many or 75% of availble CPUs.
+# Note: need to run this twice before NL locale takes effect.
+locale.setlocale(locale.LC_ALL, 'nl_NL.UTF-8')
+
+
+CONFIG = dict(
+    # casus data (huge gzipped csv files)
+    cdpath=Path(__file__).parent / 'data-casus',
+    # other data
+    dpath=Path(__file__).parent / 'data',
+    # other data
+    cache_path=Path(__file__).parent / 'cache',
+    # managing multiprocessing
+    max_num_cpu=6, # max number of cpus
+    max_frac_cpu=0.75, # max fraction of available cpus to use.
+    )
+
+def set_conf(**kwargs):
+    """Set configuration parameters (CONFIG global variable)."""
+
+    for k, v in kwargs:
+        if k in CONFIG:
+            CONFIG[k] = type(CONFIG(k))(v)
+        else:
+            raise KeyError(k)
 
 def PoolNCPU(msg=None):
     """Return Pool reasonable number of CPUs to use.
 
     Optional message that may include {ncpu}.
+    If ncpu=1, return a dummy object that does an unpooled map.
     """
     # Load data with multi CPU, don't eat up all CPU
-    ncpu = min(MAX_CPUS, max(1, cpu_count() * 3//4))
+    ncpu = max(1, int(cpu_count() * CONFIG['max_frac_cpu']))
+    ncpu = min(CONFIG['max_num_cpu'], ncpu)
     if msg:
         print(msg.format(ncpu=ncpu))
 
-    return Pool(ncpu)
+    class DummyPool:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_args):
+            pass
+        def map(self, f, inputs):
+            return map(f, inputs)
+
+    if ncpu > 1:
+        return Pool(ncpu)
+
+    return DummyPool()
 
 
 def load_casus_data(date):
-    """Return DataFrame with casus data.
+    """Return DataFrame with casus data from one RIVM csv file.
 
     Parameter:
 
@@ -46,7 +102,7 @@ def load_casus_data(date):
     Date_file and Date_statistics will be timestamps (at time 0:00)
     """
 
-    fname = f'{CDPATH}/COVID-19_casus_landelijk_{date}.csv'
+    fname = f'{CONFIG["cdpath"]}/COVID-19_casus_landelijk_{date}.csv'
     if Path(fname).exists():
        pass
     elif Path(f'{fname}.gz').exists():
@@ -112,7 +168,7 @@ def download_rivm_casus_files():
     """
 
     fdates = set()
-    for fn in CDPATH.glob('COVID-19_casus_landelijk_*.csv.gz'):
+    for fn in CONFIG["cdpath"].glob('COVID-19_casus_landelijk_*.csv.gz'):
         fn = str(fn)
         ma = re.search(r'(\d\d\d\d-\d\d-\d\d).csv.gz$', fn)
         if not ma:
@@ -156,7 +212,7 @@ def download_rivm_casus_files():
         # @@ debug
         # url = 'https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_cumulatief.csvx'
         print(f'Downloading casus data for {fdate} ...')
-        fpath = CDPATH / (fname_template.format(date=fdate) + '.gz')
+        fpath = CONFIG["cdpath"] / (fname_template.format(date=fdate) + '.gz')
         with urllib.request.urlopen(url) as response:
             data_bytes = response.read()
             if response.code != 200:
@@ -180,7 +236,10 @@ def _load_one_df(date):
     return load_casus_summary(date).reset_index()
 
 def load_merged_summary(date_lo, date_hi):
-    """Return merged summary DataFrame between two yyyy-mm-dd file dates."""
+    """Return merged summary DataFrame between two yyyy-mm-dd file dates.
+
+    It loads from the csv file as created by create_merged_summary_csv().
+    """
 
     # Build list of file dates to read
     date_lo = pd.to_datetime(date_lo)
@@ -190,7 +249,7 @@ def load_merged_summary(date_lo, date_hi):
     fdates = []
     while date <= date_hi:
         date_str = date.strftime('%Y-%m-%d')
-        fpath = CDPATH / f'COVID-19_casus_landelijk_{date_str}.csv.gz'
+        fpath = CONFIG["cdpath"] / f'COVID-19_casus_landelijk_{date_str}.csv.gz'
         if not fpath.is_file():
             print(f'Using casus data before {date_str}.')
             break
@@ -208,7 +267,7 @@ def create_merged_summary_csv(date_lo='2020-07-01'):
     """Load lots fo data, write to data/casus_history_summary.csv."""
 
     dfmerged = load_merged_summary(date_lo, '2099-01-01')
-    fpath = DPATH / 'casus_history_summary.csv'
+    fpath = CONFIG["dpath"] / 'casus_history_summary.csv'
     dfmerged.to_csv(fpath)
     print(f'Wrote {fpath} .')
 
@@ -217,7 +276,7 @@ def load_merged_summary_csv(date_lo='2020-07-01', date_hi='2099-01-01'):
 
     Columns: Date_file, Date_statistics, DOO, DON, DPL, Dtot.
     """
-    fpath = DPATH / 'casus_history_summary.csv'
+    fpath = CONFIG["dpath"] / 'casus_history_summary.csv'
     df = pd.read_csv(fpath, index_col=0)
     for col in ['Date_statistics', 'Date_file']:
         df[col] = pd.to_datetime(df[col])
@@ -333,7 +392,7 @@ def _ymd(date):
     return date.strftime('%Y-%m-%d')
 
 
-class GData:
+class DOOCorrection:
     """Coverage of recent DOO reports.
 
     For a stat_date that is j days before the file_date, G[j]
@@ -348,6 +407,8 @@ class GData:
     - G: array (m,) with G values
     - eG: array (m,) with estimated errors in G
     - date_range: [date_lo, date_hi]
+    - G_dow_corr: DoW correction factors for G, shape (7, m).
+      (use G*G_dow_corr[dow] or iG/G_dow_corr[dow])
 
     - iG: inverse G
     - eiG: standard error on iG
@@ -359,21 +420,26 @@ class GData:
     - plot(): plot
     """
 
-    def __init__(self, G, eG, date_range):
+    def __init__(self, G, eG, date_range, G_dow_corr):
         """Init attributes directly."""
 
         self.G = np.array(G)
         self.eG = np.array(eG)
         self.date_range = [pd.to_datetime(x) for x in date_range[:2]]
 
-        self.iG = 1/G
-        self.iG[self.G < 2*self.eG] = np.nan
+        self.iG = 1/np.where(self.G!=0, self.G, np.nan)
+        mask_big_err = (self.G < 2*self.eG)
+        mask_big_iG = (np.where(np.isfinite(self.iG), self.iG, 999)  > 5)
+
+        self.iG[mask_big_err | mask_big_iG] = np.nan
         self.eiG = self.eG*self.iG**2
+
+        self.G_dow_corr = np.array(G_dow_corr)
 
 
     @classmethod
     def from_doo_df(cls, df, m=18, date_range=('2020-07-01', '2099-01-01'),
-                    dow=None):
+                    dow=None, G_dow_corr=None):
         """Initialize from DataFrame.
 
         Parameters:
@@ -382,6 +448,8 @@ class GData:
         - date_range: (date_start, date_end) for Date_file index
         - m: number of days for estimation function
         - dow: filter by reported day of week (0=Monday, 6=Sunday), optional.
+        - G_dow_corr, optional day-of-week correction factor matrix,
+          shape (7, m). Default: ones.
 
         Return:
 
@@ -394,6 +462,11 @@ class GData:
         fdates = df.index.get_level_values('Date_file').unique().sort_values()
         fdates = fdates[(fdates >= date_range[0]) & (fdates <= date_range[1])]
 
+        if G_dow_corr is None:
+            G_dow_corr = np.ones((7, m))
+        else:
+            assert G_dow_corr.shape == (7, m)
+
         # df1 is a working copy.
         df1 = df.loc[fdates]
         n = len(fdates)
@@ -405,12 +478,13 @@ class GData:
         # build report matrix r[i, j], shape (n, m)
         # corresponding to eDOO at fdate=n-i, sdate=n-i-j
         rmat = np.zeros((n, m))
-        dows = np.zeros(n) # day of week corresponding to rmat rows.
+        dows = np.zeros(n, dtype=int) # day of week corresponding to rmat rows.
         for i in range(n):
             fdate = fdates[n-i-1]
             edoo = df1.loc[(fdate,), 'eDOO']
             rmat[i, :] = edoo[-1:-m-1:-1]
             dows[i] = fdate.dayofweek
+        rmat *= G_dow_corr[dows, :]
 
         # If f[i+j] is the true number of cases at sdate=n-i-j,
         # then we search a function G[j] such that r[i,j] = f[i+j] * G[j].
@@ -422,6 +496,7 @@ class GData:
         ijm1 = ii.reshape(-1, 1) + jj + (1-m)
 
         G = rmat[m:n, :] / rmat[ijm1, -1]
+        G[~np.isfinite(G)] = 0
         # Now weighted average (more weight to high case counts).
         # also apply dow filter here.
         weights = rmat[ijm1, -1].mean(axis=1).reshape(-1, 1)
@@ -432,7 +507,29 @@ class GData:
         Gavg = np.sum(G*weights, axis=0) / weights.sum()
         sigma = (G - Gavg).std(axis=0, ddof=1)
 
-        return cls(Gavg, sigma, [fdates[0], fdates[-1]])
+        return cls(Gavg, sigma, [fdates[0], fdates[-1]], G_dow_corr)
+
+    @classmethod
+    def calc_dow_correction(cls, df, m=18, date_range=('2020-07-01', '2099-01-01')):
+        """Return G_dow_corr matrix. Arguments as in from_doo_df()."""
+
+        date_range = [pd.to_datetime(x) for x in date_range]
+        fdates = df.index.get_level_values('Date_file').unique().sort_values()
+        fdates = fdates[(fdates >= date_range[0]) & (fdates <= date_range[1])]
+
+        if len(fdates) < 14:
+            raise ValueError(f'Date range must span >= 14 days.')
+
+        gds = [
+               cls.from_doo_df(df, m=18, date_range=date_range, dow=dow)
+               for dow in [0, 1, 2, 3, 4, 5, 6, None]
+            ]
+
+        Gs = np.array([gd.G for gd in gds]) # (8, m) array
+        with np.errstate(divide='ignore'):
+            gdc = Gs[7] / np.where(Gs!=0, Gs, np.nan)[:7]  # shape (7, m)
+
+        return gdc
 
 
     def plot(self, other_Gs=None, labels=None):
@@ -460,10 +557,8 @@ class GData:
         if labels is None:
             labels = [
                 f'{_ymd(gd.date_range[0])} .. {_ymd(gd.date_range[1])}'
-                for gd in gds
+                for gd in all_Gs
                 ]
-
-
         ax = axs[0]
 
         ax.set_ylabel('DOO coverage')
@@ -497,7 +592,7 @@ class GData:
         fig.show()
 
     def create_df_nDOO(self, df):
-        """Create DataFrame with nDOO, enDOO columns.
+        """Create DataFrame with nDOO, nDOO_err columns.
 
         Parameter:
 
@@ -518,16 +613,18 @@ class GData:
             raise KeyError('df must have single index "Date_statistics".')
 
         df = df.sort_index()
-        m = len(self.iG)
+        m = min(len(self.iG), len(df))
 
         new_df = pd.DataFrame(index=df.index)
         new_df['nDOO'] = df['eDOO']
         new_df['nDOO_err'] = 0.0
 
         dslice = slice(df.index[-m], df.index[-1])
+        mslice = slice(m-1, None, -1)
 
-        new_df.loc[dslice, 'nDOO'] *= self.iG[::-1]
-        new_df.loc[dslice, 'nDOO_err'] = new_df.loc[dslice, 'nDOO'] * self.eiG[::-1]
+        dow_corr = self.G_dow_corr[df.index[-1].dayofweek, mslice]
+        new_df.loc[dslice, 'nDOO'] *=  self.iG[mslice] / dow_corr
+        new_df.loc[dslice, 'nDOO_err'] = df.loc[dslice, 'eDOO'] * self.eiG[mslice] / dow_corr
 
         for col in ['nDOO', 'nDOO_err']:
             data = new_df.loc[dslice, col]
@@ -537,8 +634,15 @@ class GData:
 
         return new_df
 
-    def plot_nDOO(self, df_eDOO):
-        """Plot one or more DataFrames with eDOO data."""
+    def plot_nDOO(self, df_eDOO, title=None):
+        """Plot one or more DataFrames with eDOO data (after corrections applied).
+
+        Parameters:
+
+        - df_eDOO: one dataframe or list of dataframes to plot. Each DataFrame
+          must have 'Date_statistics' as index.
+        - title: optional plot title string.
+        """
 
         if isinstance(df_eDOO, pd.DataFrame):
             df_eDOO = [df_eDOO]
@@ -547,6 +651,7 @@ class GData:
         color_cycle = plt.rcParams['axes.prop_cycle']()
         for dfe in df_eDOO:
             dfn = self.create_df_nDOO(dfe)
+
             color = next(color_cycle)['color']
             ax.semilogy(dfn['nDOO'], color=color, label=_ymd(dfn.index[-1]))
 
@@ -558,96 +663,80 @@ class GData:
                 )
         ax.set_xlabel('Datum eerste ziektedag')
         ax.set_ylabel('Aantal')
-        ax.legend()
+
+        if len(df_eDOO) < 4:
+            ax.legend()
         ax.grid()
+
+        if title:
+            ax.set_title(title)
+            fig.canvas.set_window_title(title)
+
         fig.show()
 
-def analyze_dow_effect(df, m=18, drange=('2020-07-01', '2099-01-01')):
-    """Analyze day-of-week effect on correction factor.
+    def plot_dow_corr(self, subtitle=None):
+        """Plot DoW correction (in iG).
 
-    Parameters:
+        Parameters:
 
-    - df: DataFrame with multi-index and column eDOO.
-    - drange: Date range for report dates.
+        - subtitle: optional second line for title.
+        """
+
+        short_dows = 'ma,di,wo,do,vr,za,zo'.split(',')
+
+        fig, ax = plt.subplots(tight_layout=True, figsize=(8, 4))
+
+        igc = 1/self.G_dow_corr
+        m = igc.shape[1]
+        igc_pad = np.full((7, m+6), np.nan)
+        for i in range(7):
+            igc_pad[i, (7-i):(6-i)+m] = igc[i, 1:] # ignore noisy igc[:, 0] values
+        igc_pad = (igc_pad-1)*100 # make it percentages
+
+        vmax = min(np.nanmax(np.abs(igc_pad)), 15)
+
+        cmap = matplotlib.cm.get_cmap('seismic')
+        cmap.set_bad(color='#bbccbb')
+
+        cm = ax.imshow(igc_pad, aspect='auto', cmap=cmap, vmin=-vmax, vmax=vmax)
+        fig.colorbar(cm)
+
+        ax.set_xlabel('Recent ← Dag casus → Oud')
+        ax.set_ylabel('Weekdag rapport')
+        ax.set_yticks(np.arange(7))
+        ax.set_yticklabels(short_dows)
+        ax.set_xticks(np.arange(m+6))
+        ax.set_xticklabels([short_dows[6-i%7] for i in range(m+6)])
+
+        title = 'Correctiefactor nieuwe ziekmeldingen, effect (%) van rapportagedag'
+        if subtitle:
+            title += f'\n{subtitle}'
+        ax.set_title(title)
+        fig.show()
+
+
+
+def save_data_cache(df, fname):
+    """Save data to pickle file in CONFIG['cache_path']."""
+
+    fpath = CONFIG['cache_path'] / fname
+    with fpath.open('wb') as f:
+        pickle.dump(df, f)
+    print(f'Wrote cache: {fpath}')
+
+def load_data_cache(fname, maxageh=1):
+    """Attempt to load a data from cache. Return None if failed or too old.
+
+    maxageh is in hours.
     """
 
-    gds = [
-           GData.from_doo_df(df, m=18, date_range=drange, dow=dow)
-           for dow in [0, 1, 2, 3, 4, 5, 6, None]
-        ]
-    labels = 'maandag,dinsdag,woensdag,donderdag,vrijdag,zaterdag,zondag,alle'.split(',')
-
-    gds[0].plot(other_Gs=gds[1:], labels=labels)
-    gds[0].plot(other_Gs=[gds[4], gds[7]],
-                labels=['maandag', 'donderdag', 'alle'])
-
-    # Isolate date effect on correction factor
-    iGs = np.array([gd.iG for gd in gds]) # (8, m) array
-    iGratios = iGs[:7] / iGs[7] # shape (7, m)
-
-    fig, ax = plt.subplots(tight_layout=True, figsize=(8, 4))
-    for iGr, label in zip(iGratios, labels):
-        ax.plot(np.arange(m), iGr, 'o-', label=label)
-
-    ax.set_xlabel('Dagen geleden')
-    ax.set_ylabel('Correctiefactor-correctie')
-    ax.legend()
-    ax.grid()
-    ax.set_title('Correctiefactor nieuwe ziekmeldingen, effect van rapportagedag\n'
-                 f'(Tijdvak {_ymd(gds[0].date_range[0])} .. {_ymd(gds[0].date_range[1])})')
-    fig.show()
-
-
-
-
-
-    # Plot date effect on correction factor
-
-plt.close('all')
-
-analyze_dow_effect(df, drange=('2020-09-01', '2099-01-01'))
-#%%
-
-if __name__ == '__main__':
-    # Note, because of multiprocessing for data loading,
-    # avoid adding interactive/slow code outside the main block.
-
-    # Note: need to run this twice before NL locale takes effect.
-    locale.setlocale(locale.LC_ALL, 'nl_NL.UTF-8')
-
-    if download_rivm_casus_files():
-        # If there is new data, process it.
-        # This is a bit slow. Someday, be smarter in merging.
-        create_merged_summary_csv()
-
-    df = load_merged_summary_csv() # (2020-08-01', '2020-10-01')
-    df = add_eDOO_to_summary(df)
-    print(df)
-
-    plt.close('all')
-
-    dranges = [
-        ('2020-07-01', '2020-08-15'),
-        ('2020-08-01', '2020-09-15'),
-        ('2020-09-01', '2020-10-15'),
-        ('2020-10-01', '2020-11-16')
-        ]
-
-
-    analyze_dow_effect(df)
-#%%
-    print('gdata...')
-    gds = [
-           GData.from_doo_df(df, m=18, date_range=dr)
-           for dr in dranges
-        ]
-    print('done.')
-    gds[0].plot(gds[1:])
-
-    dfns = [
-        df.loc[fdate].reset_index(0)
-        for fdate in ['2020-11-16', '2020-11-01', '2020-11-08', '2020-10-15',
-                      '2020-10-01']
-        ]
-    gds[3].plot_nDOO(dfns)
-
+    fpath = CONFIG['cache_path'] / fname
+    if not fpath.is_file():
+        return None
+    if fpath.stat().st_mtime < time.time() - maxageh*3600:
+        print(f'Cache file {fpath} is too old.')
+        return None
+    with fpath.open('rb') as f:
+        df = pickle.load(f)
+        print(f'Loaded from cache: {fpath}')
+        return df
