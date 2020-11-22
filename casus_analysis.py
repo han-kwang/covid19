@@ -39,6 +39,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
+import scipy.signal
 
 # Note: need to run this twice before NL locale takes effect.
 locale.setlocale(locale.LC_ALL, 'nl_NL.UTF-8')
@@ -150,7 +151,7 @@ def load_casus_summary(date):
 
     return dfsum
 
-def download_rivm_casus_files():
+def download_rivm_casus_files(force_today=False):
     """Download missing day files in data-casus.
 
     Download from here:
@@ -181,7 +182,7 @@ def download_rivm_casus_files():
 
     # end date is now or yesterday depending on time of day.
     tm_now = pd.to_datetime('now')
-    if tm_now.hour < 15:
+    if tm_now.hour < 15 and not force_today:
         tm_now -= pd.Timedelta('1 d')
     tm_end = pd.to_datetime(tm_now.strftime('%Y-%m-%d'))
 
@@ -392,36 +393,79 @@ def _ymd(date):
     return date.strftime('%Y-%m-%d')
 
 
+def _show_save_fig(fig, show, fname):
+    """Optionally show plot, optionaly save figure.
+    Delete figure if no show.
+    """
+
+    if show:
+        fig.show()
+
+    if fname:
+        fig.savefig(str(fname))
+        print(f'Wrote {fname} .')
+
+    if not show:
+        plt.close(fig)
+
+
 class DOOCorrection:
     """Coverage of recent DOO reports.
 
     For a stat_date that is j days before the file_date, G[j]
     is the estimated fraction of the true number of DOO cases for
-    that stat_date.
+    that stat_date. This calculation method was proposed by @bslagter
+    on Twitter.
 
-    The calculation method is essentially the method
-    proposed by Twitter @bslagter .
+    Furthermore, two day-of-week (DoW) corrections are available:
+
+    - DoW correction for file date: reports released on Sundays have
+      different correction factors from those released on Mondays.
+    - DoW correction for disease-onset (DOO) date. More people report Monday as
+      the first day compared to Sunday.
+
+    To initialize the 'G' correction, use from_doo_df(). To get the data for
+    one full month, provide the end date 18 days into the next month.
+
+    For the DoW corrections, data based on a single month is probably to noisy
+    to see DoW effects clearly. therefore, the workflow is:
+
+    1. use calc_fdow_correction() over a longer period to get f_dow_corr.
+    2. use calc_sdow_correction() over a longer period to get s_dow_ce.
+    3. use from_doo_df() over e.g. 1 month to get a full DOOCorrection.
 
     Attributes:
 
     - G: array (m,) with G values
     - eG: array (m,) with estimated errors in G
-    - date_range: [date_lo, date_hi]
-    - G_dow_corr: DoW correction factors for G, shape (7, m).
-      (use G*G_dow_corr[dow] or iG/G_dow_corr[dow])
+    - date_range: [date_lo, date_hi] (file dates that the correction
+      was evaluated for. The input file dates extend m more days.)
+    - f_dow_corr: file-date DoW correction factors for G, shape (7, m).
+      (use G*f_dow_corr[dow] or iG/f_dow_corr[dow])
+    - s_dow_corr: statistics-date DoW correction factors for nDOO, shape (7,)
+      (use iG*s_dow_corr)
+    - s_dow_corr_err: standard error on s_dow_corr (float)
 
     - iG: inverse G
     - eiG: standard error on iG
 
     Functions:
 
-    - __init__(): direct initialization of all attributes
-    - from_doo_df(): analyze casus dataframe
-    - plot(): plot
+    - __init__(): direct initialization of all attributes.
+    - from_doo_df(): analyze casus dataframe.
+    - create_df_nDOO(self, df): create new dataframe with estimated nDOO.
+    - calc_sdow_correction(): calculate stat-date DoW correction factor.
+    - calc_fdow_correction(): calculate file-date DoW correction factors.
+    - plot(): plot the correction curve.
+    - plot_fdow_corr(): plot the file-date DoW correction curve.
+    - plot_nDOO(): plot nDOO data (from eDOO column in dataframe)
     """
 
-    def __init__(self, G, eG, date_range, G_dow_corr):
-        """Init attributes directly."""
+    def __init__(self, G, eG, date_range, f_dow_corr, s_dow_ce):
+        """Init attributes directly.
+
+        f_dow_ce, s_dow_ce are tuples (*_corr, *_corr_err)
+        """
 
         self.G = np.array(G)
         self.eG = np.array(eG)
@@ -434,12 +478,13 @@ class DOOCorrection:
         self.iG[mask_big_err | mask_big_iG] = np.nan
         self.eiG = self.eG*self.iG**2
 
-        self.G_dow_corr = np.array(G_dow_corr)
-
+        self.f_dow_corr = np.array(f_dow_corr)
+        self.s_dow_corr = np.array(s_dow_ce[0])
+        self.s_dow_corr_err = float(s_dow_ce[1])
 
     @classmethod
     def from_doo_df(cls, df, m=18, date_range=('2020-07-01', '2099-01-01'),
-                    dow=None, G_dow_corr=None):
+                    dow=None, f_dow_corr=None, s_dow_ce=None):
         """Initialize from DataFrame.
 
         Parameters:
@@ -448,13 +493,15 @@ class DOOCorrection:
         - date_range: (date_start, date_end) for Date_file index
         - m: number of days for estimation function
         - dow: filter by reported day of week (0=Monday, 6=Sunday), optional.
-        - G_dow_corr, optional day-of-week correction factor matrix,
-          shape (7, m). Default: ones.
+        - f_dow_corr, None, 'auto', or file-date day-of-week correction factor matrix,
+          shape (7, m).  None for no correction; 'auto' for setting the correction.
+        - s_dow_ce: None, 'auto, or tuple (s_dow_corr, s_dow_corr_err);
+          statistics-date DoW correction factor, shape (7,), and
+          the standard error (float).
 
         Return:
 
-        - G: array, shape (m,)
-        - sigma_G: estimated standard error based on the input data.
+        - DOOCorrection instance.
         """
 
         date_range = [pd.to_datetime(x) for x in date_range]
@@ -462,10 +509,22 @@ class DOOCorrection:
         fdates = df.index.get_level_values('Date_file').unique().sort_values()
         fdates = fdates[(fdates >= date_range[0]) & (fdates <= date_range[1])]
 
-        if G_dow_corr is None:
-            G_dow_corr = np.ones((7, m))
+        if f_dow_corr is None:
+            f_dow_corr = np.ones((7, m))
+        elif isinstance(f_dow_corr, str) and f_dow_corr == 'auto':
+            f_dow_corr = cls.calc_fdow_correction(df, m=m, date_range=date_range)
         else:
-            assert G_dow_corr.shape == (7, m)
+            f_dow_corr = np.array(f_dow_corr)
+            assert f_dow_corr.shape == (7, m)
+
+        if s_dow_ce is None:
+            s_dow_ce = (np.ones(7), 0.0)
+        elif s_dow_ce == 'auto':
+            s_dow_ce = cls.calc_sdow_correction(
+                df, date_range=date_range, skip=m)
+        else:
+            s_dow_ce = (np.array(s_dow_ce[0]), float(s_dow_ce[1]))
+            assert s_dow_ce[0].shape == (7,)
 
         # df1 is a working copy.
         df1 = df.loc[fdates]
@@ -484,12 +543,12 @@ class DOOCorrection:
             edoo = df1.loc[(fdate,), 'eDOO']
             rmat[i, :] = edoo[-1:-m-1:-1]
             dows[i] = fdate.dayofweek
-        rmat *= G_dow_corr[dows, :]
+        rmat *= f_dow_corr[dows, :]
 
         # If f[i+j] is the true number of cases at sdate=n-i-j,
         # then we search a function G[j] such that r[i,j] = f[i+j] * G[j].
-        # We estimate f[i+j] as r[i+j-m, m]
-        # Therefore G[j] = r[i, j] / r[i+j-m+1, m] (for all valid i)
+        # We estimate f[i+j] as r[i+j-m+1, m-1]
+        # Therefore G[j] = r[i, j] / r[i+j-m+1, m-1] (for all valid i)
         # with j=range(0, m)
         ii = np.arange(m, n)
         jj = np.arange(m)
@@ -507,11 +566,15 @@ class DOOCorrection:
         Gavg = np.sum(G*weights, axis=0) / weights.sum()
         sigma = (G - Gavg).std(axis=0, ddof=1)
 
-        return cls(Gavg, sigma, [fdates[0], fdates[-1]], G_dow_corr)
+        return cls(Gavg, sigma, [fdates[0], fdates[-1]-pd.Timedelta(m, 'd')],
+                    f_dow_corr=f_dow_corr, s_dow_ce=s_dow_ce)
 
     @classmethod
-    def calc_dow_correction(cls, df, m=18, date_range=('2020-07-01', '2099-01-01')):
-        """Return G_dow_corr matrix. Arguments as in from_doo_df()."""
+    def calc_fdow_correction(cls, df, m=18, date_range=('2020-07-01', '2099-01-01')):
+        """Return f_dow_corr matrix. Arguments as in from_doo_df().
+
+        This is the correction based on Date_file.dayofweek
+        """
 
         date_range = [pd.to_datetime(x) for x in date_range]
         fdates = df.index.get_level_values('Date_file').unique().sort_values()
@@ -520,22 +583,115 @@ class DOOCorrection:
         if len(fdates) < 14:
             raise ValueError(f'Date range must span >= 14 days.')
 
-        gds = [
-               cls.from_doo_df(df, m=18, date_range=date_range, dow=dow)
-               for dow in [0, 1, 2, 3, 4, 5, 6, None]
-            ]
+        dcs = [ cls.from_doo_df(df, m=m, date_range=date_range,
+               dow=dow) for dow in [0, 1, 2, 3, 4, 5, 6, None] ]
 
-        Gs = np.array([gd.G for gd in gds]) # (8, m) array
+        Gs = np.array([dc.G for dc in dcs]) # (8, m) array- - values
         with np.errstate(divide='ignore'):
-            gdc = Gs[7] / np.where(Gs!=0, Gs, np.nan)[:7]  # shape (7, m)
+            fdc = Gs[7] / np.where(Gs!=0, Gs, np.nan)[:7]  # shape (7, m)
 
-        return gdc
+        return fdc
+
+    @staticmethod
+    def calc_sdow_correction(
+            df, date_range=('2020-09-01', '2099-01-01'), skip=14, show=False,
+            fname=None):
+        """Calculate onset-date DoW correction factor of DOO.
+
+        Parameters:
+
+        - df: full summary dataframe. (will use the most recent file date.)
+        - date_range: range of DOO dates to consider.
+        - skip: skip this many of the most recent DOO days (because DOO statistics
+          are not stable yet).
+        - fname: optional filename to save plot.
+        - show: whether to show a plot.
 
 
-    def plot(self, other_Gs=None, labels=None):
+        Return:
+
+        - dow_corr: week-day correction factor on day of onset, array (7,).
+          Multiply nDOO data by this to get a smoother curve.
+        - dow_corr_err: standard error on this quantity (float)
+        """
+
+        # Get data for one file date.
+        fdates = df.index.get_level_values('Date_file').unique().sort_values()
+        df1 = df.loc[fdates[-1]] # most recent file; new dataframe has index Date_statistics
+
+        # Get data for range of DOO dates
+        sdates = df1.index # Date_statistics
+        sdmask_1 = (sdates >= date_range[0])
+        sdmask_2 = (sdates <= pd.to_datetime(date_range[1]) - pd.Timedelta(skip, 'd'))
+        sdmask_3 = (sdates <= fdates[-1] - pd.Timedelta(skip, 'd'))
+        sdates = sdates[sdmask_1 & sdmask_2 & sdmask_3]
+        ndoos = df1.loc[sdates, 'eDOO']
+
+        # convert to log, get smooth component and deviation.
+        # Savitzky-Golay filter width 15 (2 weeks) will not follow weekly oscillation.
+        log_ys = np.log(ndoos)
+        log_ys_sm = scipy.signal.savgol_filter(log_ys, 15, 2)
+        log_ys_sm = pd.Series(log_ys_sm, index=sdates)
+        log_ys_dev = log_ys - log_ys_sm
+
+        # Statistics on per-weekday basis.
+        dows = sdates.dayofweek
+        dowdev = np.array([
+            np.mean(log_ys_dev[dows==dow])
+            for dow in range(7)
+            ])
+        # residual
+        log_ys_dev_resid = log_ys_dev - dowdev[dows]
+        # standard deviation on residual
+
+        # Convert to per-dow correction factors and error
+        dow_corr = np.exp(-dowdev)
+        dow_corr_err = log_ys_dev_resid.std(ddof=1)
+
+        if show or fname:
+
+            fig, axs = plt.subplots(1, 3, tight_layout=True, figsize=(10, 3))
+            ax = axs[0]
+            ax.plot(log_ys, label='Ruwe data')
+            ax.plot(ndoos.index, log_ys_sm, label='Trend', zorder=-1)
+            # ax.plot(ndoos.index, log_ys_sm + dowdev[dows], label='Gecorrigeerde trend', zorder=-1)
+            ax.set_ylabel('ln(nDOO)')
+            ax.grid()
+            ax.legend()
+            ax.tick_params(axis='x', labelrotation=-20)
+            ax.legend()
+            # plt.xticks(rotation=-20)
+            for tl in ax.get_xticklabels():
+                tl.set_ha('left')
+
+            ax = axs[1]
+            ax.plot(log_ys_dev, label='t.o.v. trend')
+            ax.plot(log_ys_dev_resid, label='t.o.v. gecorrigeerde trend')
+            ax.set_ylabel('Verschil')
+            ax.grid()
+            ax.tick_params(axis='x', labelrotation=-20)
+            ax.legend()
+            # plt.xticks(rotation=-20)
+            for tl in ax.get_xticklabels():
+                tl.set_ha('left')
+
+            # 3rd panel: per-weekday mean deviation
+            ax = axs[2]
+            ax.bar(np.arange(7), (np.exp(dowdev)-1)*100)
+            ax.set_ylabel('Afwijking (%)')
+            ax.set_xticks(np.arange(7))
+            ax.set_xticklabels(['ma', 'di', 'wo', 'do', 'vr', 'za', 'zo'])
+
+            _show_save_fig(fig, show, fname)
+
+        return dow_corr, dow_corr_err
+
+    def plot(self, other_Gs=None, labels=None, fname=None, show=True):
         """Plot. Optionally plot other Gdata (list) as well.
 
         - labels: optional list of labels for curves.
+        - fname: optional plot save filename (pdf or png)
+        - show: whether to show plot on-screen
         """
 
         fig, axs = plt.subplots(2, 1, figsize=(7, 5), tight_layout=True, sharex=True)
@@ -589,10 +745,11 @@ class DOOCorrection:
                 )
 
         axs[1].legend()
-        fig.show()
+        _show_save_fig(fig, show, fname)
+
 
     def create_df_nDOO(self, df):
-        """Create DataFrame with nDOO, nDOO_err columns.
+        """Create DataFrame with nDOO, nDOO_err, ncDOO, ncDOO_err columns.
 
         Parameter:
 
@@ -607,6 +764,7 @@ class DOOCorrection:
             - Date: date (index)
             - nDOO: estimated number of new date-of-onset cases
             - nDOO_err: estimated standard error on nDOO.
+            - ncDOO, ncDOO_err: same, but corrected for DoW effects.
         """
 
         if df.index.name != 'Date_statistics':
@@ -615,6 +773,7 @@ class DOOCorrection:
         df = df.sort_index()
         m = min(len(self.iG), len(df))
 
+        # New DataFrame, initialize nDOO, nDOO_err
         new_df = pd.DataFrame(index=df.index)
         new_df['nDOO'] = df['eDOO']
         new_df['nDOO_err'] = 0.0
@@ -622,19 +781,25 @@ class DOOCorrection:
         dslice = slice(df.index[-m], df.index[-1])
         mslice = slice(m-1, None, -1)
 
-        dow_corr = self.G_dow_corr[df.index[-1].dayofweek, mslice]
+        dow_corr = self.f_dow_corr[df.index[-1].dayofweek, mslice]
         new_df.loc[dslice, 'nDOO'] *=  self.iG[mslice] / dow_corr
         new_df.loc[dslice, 'nDOO_err'] = df.loc[dslice, 'eDOO'] * self.eiG[mslice] / dow_corr
 
-        for col in ['nDOO', 'nDOO_err']:
+        # also add ncDOO, ncDOO_err columns
+        new_df['ncDOO'] = new_df['nDOO'] * self.s_dow_corr[new_df.index.dayofweek]
+        ncDOO_err = new_df['nDOO'].to_numpy() * self.s_dow_corr_err
+        ncDOO_err = np.sqrt(ncDOO_err**2 + new_df['nDOO_err']**2)
+        new_df['ncDOO_err'] = ncDOO_err
+
+        for col in ['nDOO', 'nDOO_err', 'ncDOO', 'ncDOO_err']:
             data = new_df.loc[dslice, col]
-            data[data >= 100] = np.around(data[data >= 100], 0)
+            data[data >= 100] = np.around(data[data >= 100])
             data = np.around(data, 1)
             new_df.loc[dslice, col] = data
 
         return new_df
 
-    def plot_nDOO(self, df_eDOO, title=None):
+    def plot_nDOO(self, df_eDOO, title=None, kind='nDOO', fname=None, show=True):
         """Plot one or more DataFrames with eDOO data (after corrections applied).
 
         Parameters:
@@ -642,10 +807,24 @@ class DOOCorrection:
         - df_eDOO: one dataframe or list of dataframes to plot. Each DataFrame
           must have 'Date_statistics' as index.
         - title: optional plot title string.
+        - kind: 'nDOO' or 'ncDOO': the estimated new cases or the
+          estimated DoW-corrected new cases; 'nncDOO' for both.
+        - fname: optional filename for plot output.
+        - show: whether to show on-screen.
         """
 
         if isinstance(df_eDOO, pd.DataFrame):
             df_eDOO = [df_eDOO]
+
+        # which columns to plto
+        if kind == 'nDOO':
+            ncol, ecol = 'nDOO', 'nDOO_err'
+            ylabel = 'Aantal per dag'
+        elif kind == 'ncDOO':
+            ncol, ecol = 'ncDOO', 'ncDOO_err'
+            ylabel = 'Aantal per dag (na weekdagcorrectie)'
+        else:
+            raise ValueError(f'kind={kind}')
 
         fig, ax = plt.subplots(tight_layout=True, figsize=(10, 5))
         color_cycle = plt.rcParams['axes.prop_cycle']()
@@ -653,40 +832,44 @@ class DOOCorrection:
             dfn = self.create_df_nDOO(dfe)
 
             color = next(color_cycle)['color']
-            ax.semilogy(dfn['nDOO'], color=color, label=_ymd(dfn.index[-1]))
+            ax.semilogy(dfn[ncol], color=color, label=_ymd(dfn.index[-1]))
 
             dfne = dfn.iloc[-len(self.iG):]
             ax.fill_between(
-                dfne.index, dfne['nDOO']-dfne['nDOO_err'],
-                dfne['nDOO']+dfne['nDOO_err'],
+                dfne.index, dfne[ncol]-dfne[ecol],
+                dfne[ncol]+dfne[ecol],
                 color=color, alpha=0.2, zorder=-1
                 )
         ax.set_xlabel('Datum eerste ziektedag')
-        ax.set_ylabel('Aantal')
+        ax.set_ylabel(ylabel)
 
         if len(df_eDOO) < 4:
             ax.legend()
         ax.grid()
+        ax.grid(which='minor', axis='y')
 
         if title:
             ax.set_title(title)
             fig.canvas.set_window_title(title)
 
-        fig.show()
+        _show_save_fig(fig, show, fname)
 
-    def plot_dow_corr(self, subtitle=None):
-        """Plot DoW correction (in iG).
+
+    def plot_fdow_corr(self, subtitle=None, fname=None, show=True):
+        """Plot file-date DoW correction (in iG).
 
         Parameters:
 
         - subtitle: optional second line for title.
+        - show: whether to show on-screen
+        - fname: optional filename for plot output (png)
         """
 
         short_dows = 'ma,di,wo,do,vr,za,zo'.split(',')
 
         fig, ax = plt.subplots(tight_layout=True, figsize=(8, 4))
 
-        igc = 1/self.G_dow_corr
+        igc = 1/self.f_dow_corr
         m = igc.shape[1]
         igc_pad = np.full((7, m+6), np.nan)
         for i in range(7):
@@ -712,9 +895,8 @@ class DOOCorrection:
         if subtitle:
             title += f'\n{subtitle}'
         ax.set_title(title)
-        fig.show()
 
-
+        _show_save_fig(fig, show, fname)
 
 def save_data_cache(df, fname):
     """Save data to pickle file in CONFIG['cache_path']."""
