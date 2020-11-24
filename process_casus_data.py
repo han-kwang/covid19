@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Script for casus analysis (using functions from casus_analysis.py)."""
 
 from copy import deepcopy
