@@ -20,20 +20,26 @@ Here are the Python files:
   holiday_regions.py - mapping municipalities to school-holiday regions
   nlcovidstats.py - download and plot daily number of positives.
   process_casus_data.py - script demonstrating casus analysis.
-  run_seirmodel.py - script demonsrating the SEIR model.
+  run_seirmodel.py - script demonstrating the SEIR model.
   seirmodel.py - SEIR epidimiological model (not maintained).
   test_seirmodel.py - test cases for SEIR model
   tools.py - helper functions.
 
+To install pandas in Linux:
+  pip3 install pandas scipy matplotlib
+  
+If you encounter "locale.Error: unsupported locale setting", solve this by adding nl_NL.UTF-8 in:
+  sudo dpkg reconfigure-locales
+  
 In order to use casus_analysis/process_casus_data, you need to
 download the archive of casus data. In Linux:
 
   cd data-casus
   wget https://github.com/mzelst/covid-19/archive/master.zip
-  unzip "covid-19-master/data-rivm/casus-datasets/*.csv"
-  gzip covid-19-master/data-rivm/casus-datasets/*.csv
+  unzip master.zip "covid-19-master/data-rivm/casus-datasets/*.csv"
   mv covid-19-master/data-rivm/casus-datasets/*.csv .
   gzip -v *.csv
+  rm -i master.zip
 
   # delete empty directories
   rm -ri covid-19-master/
