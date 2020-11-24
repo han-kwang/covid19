@@ -18,6 +18,7 @@ import time
 import locale
 from holiday_regions import add_holiday_regions
 import scipy.signal
+import tools
 
 
 try:
@@ -531,3 +532,6 @@ if __name__ == '__main__':
     plot_Rt(df, ndays=130, lastday=-1, delay=9, Rt_rivm=Rt_rivm)
     plot_Rt(df, ndays=40, lastday=-1, delay=9, Rt_rivm=Rt_rivm,
             regions='HR:Noord,HR:Midden+Zuid')
+
+    # pause (for command-line use)
+    tools.pause_commandline('Press Enter to end.')

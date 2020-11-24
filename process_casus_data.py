@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import casus_analysis as ca
 import urllib.request
-
+import tools
 
 def get_summary_df(maxageh=1, force_today=False):
     """Get summary dataframe with cache handling and csv update."""
@@ -436,3 +436,6 @@ if __name__ == '__main__':
 
     ## This will create and show one plot. See doc of plots_for_report.
     plots_for_report('fixj2', show=True)
+
+    # pause (for command-line use)
+    tools.pause_commandline('Press Enter to end.')
