@@ -141,9 +141,9 @@ def load_cumulative_cases():
 
 
 def get_mun_data(df, mun, n_inw, lastday=-1, printrows=0):
-    """Return dataframe for one municipality, added 'Delta', 'Delta7r' columns.
+    """Return dataframe for one municipality, with added columns.
 
-    Parameter:
+    Parameters:
 
     - n_inw: minimum population
     - printrows: print this many of the most recent rows
@@ -155,6 +155,13 @@ def get_mun_data(df, mun, n_inw, lastday=-1, printrows=0):
     - 'P:xx': province
 
     Use data up to lastday.
+
+    Return: dataframe with added columns:
+
+    - Delta: daily increase in case count.
+    - Delta7r: daily increase as 7-day rolling average
+      (last 3 days are estimated).
+    - DeltaSG: daily increase, smoothed with (15, 2) Savitsky-Golay filter.
     """
 
     if mun == 'Nederland':
@@ -197,42 +204,42 @@ def get_mun_data(df, mun, n_inw, lastday=-1, printrows=0):
 
     df1['Delta'] = nc/n_inw
     df1['Delta7r'] = nc7/n_inw
+    df1['DeltaSG'] = scipy.signal.savgol_filter(
+        nc/n_inw, 15, 2, mode='interp')
 
     return df1
 
-def estimate_Rt_series(r7, delay=10, Tc=4.0):
+def estimate_Rt_series(r, delay=9, Tc=4.0):
     """Return Rt data, assuming delay infection-reporting.
 
-    - r7: Series with 7-day rolling average of new reported infections.
+    - r: Series with smoothed new reported cases.
+      (e.g. 7-day rolling average or other smoothed data).
     - delay: assume delay (days) from date of infection.
     - Tc: assume generation interval.
 
     Return:
 
-    - Series with name 'Rt' (shorter than r7 by delay+1).
+    - Series with name 'Rt' (shorter than r by delay+1).
     """
 
-    log_r7 = np.log(r7.to_numpy()) # shape (n,)
-    assert len(log_r7.shape) == 1
+    log_r = np.log(r.to_numpy()) # shape (n,)
+    assert len(log_r.shape) == 1
 
-    log_slope = (log_r7[2:] - log_r7[:-2])/2 # (n-2,)
+    log_slope = (log_r[2:] - log_r[:-2])/2 # (n-2,)
     Rt = np.exp(Tc*log_slope) # (n-2,)
 
     # Attach to index with proper offset
-    index = r7.index[1:-1] - pd.Timedelta(delay, unit='days')
+    index = r.index[1:-1] - pd.Timedelta(delay, unit='days')
 
     return pd.Series(index=index, data=Rt, name='Rt')
 
 
+def get_t2_Rt(ncs, delta_t, i0=-3):
+    """Return most recent doubling time and Rt, from case series"""
 
-def get_t2_Rt(df1, delta_t, i0=-3, use_r7=True):
-    """Return most recent doubling time and Rt."""
-
-    # daily new cases
-    dnc = df1['Delta7r'] if use_r7 else df1['Delta']
     # exponential fit
-    t_gen = 5.0 # generation time (d)
-    t_double = delta_t / np.log2(dnc.iloc[i0]/dnc.iloc[i0-delta_t])
+    t_gen = 4.0 # generation time (d)
+    t_double = delta_t / np.log2(ncs.iloc[i0]/ncs.iloc[i0-delta_t])
     Rt = 2**(t_gen / t_double)
     return t_double, Rt
 
@@ -282,13 +289,14 @@ def add_labels(ax, labels, xpos, mindist_scale=1.0, logscale=True):
 
 
 def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
-                      use_r7=True):
+                      source='r7'):
     """Plot daily-case trends.
 
     - df: DataFrame with processed per-municipality data.
     - minpop: minimum city population
     - lastday: up to this day.
-    - use_r7: whether to use 7-day rolling average.
+    - source: 'r7' (7-day rolling average), 'raw' (no smoothing), 'sg'
+      (Savitsky-Golay smoothed).
     """
 
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -311,11 +319,11 @@ def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
         fmt = 'o-' if ndays < 70 else '-'
         psize = 5 if ndays < 30 else 3
 
-        dnc_column = 'Delta7r' if use_r7 else 'Delta'
+        dnc_column = dict(r7='Delta7r', raw='Delta', sg='DeltaSG')[source]
         ax.semilogy(df1[dnc_column]*1e5, fmt, label=mun, markersize=psize)
         delta_t = 7
-        i0 = -3 if use_r7 else -1
-        t_double, Rt = get_t2_Rt(df1, delta_t, i0=i0, use_r7=use_r7)
+        i0 = dict(raw=-1, r7=-3, sg=-3)[source]
+        t_double, Rt = get_t2_Rt(df1[dnc_column], delta_t, i0=i0)
         citystats.append((np.around(Rt, 2), np.around(t_double, 2),
                           np.around(df1['Delta'][-1]*1e5, 2),
                           int(df1['Delta7r'][-4] * n_inw * 7 + 0.5),
@@ -354,10 +362,15 @@ def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
 
     ax.grid(which='both')
 
-    if use_r7:
+    if source == 'r7':
         ax.axvline(df1.index[-4], color='gray')
         # ax.text(df1.index[-4], 0.3, '3 dagen geleden - extrapolatie', rotation=90)
         ax.set_title('7-daags voortschrijdend gemiddelde; laatste 3 dagen zijn een schatting')
+    elif source == 'sg':
+        ax.axvline(df1.index[-8], color='gray')
+        # ax.text(df1.index[-4], 0.3, '3 dagen geleden - extrapolatie', rotation=90)
+        ax.set_title('Gefilterde data; laatste 7 dagen zijn minder nauwkeurig')
+
     ax.set_ylabel('Nieuwe gevallen per 100k per dag')
 
     #ax.set_ylim(0.05, None)
@@ -377,13 +390,15 @@ def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
 
 
 def plot_Rt(df, ndays=100, lastday=-1, delay=9,
-            regions='Nederland',
+            regions='Nederland', source='r7',
             Tc=4.0, Rt_rivm=None):
-    """Plot daily-case trends (using global DataFrame df).
+    """Plot daily-case trends.
 
     - df: DataFrame with processed per-municipality data.
     - lastday: up to this day.
     - delay: assume delay days from infection to positive report.
+    - source: 'r7' or 'sg' for rolling 7-day average or Savitsky-Golay-
+      filtered data.
     - Tc: generation interval time
     - Rt_rivm: optional series with RIVM estimates.
     - regions: comma-separated string (or list of str);
@@ -403,7 +418,10 @@ def plot_Rt(df, ndays=100, lastday=-1, delay=9,
     for region in regions:
 
         df1 = get_mun_data(df, region, 1e9, lastday=lastday)
-        Rt = estimate_Rt_series(df1['Delta7r'].iloc[-ndays-delay:], delay=delay, Tc=Tc)
+        source_col = dict(r7='Delta7r', sg='DeltaSG')[source]
+
+        Rt = estimate_Rt_series(df1[source_col].iloc[-ndays-delay:],
+                                delay=delay, Tc=Tc)
 
         fmt = 'o-' if ndays < 70 else '-'
         psize = 5 if ndays < 30 else 3
@@ -432,17 +450,18 @@ def plot_Rt(df, ndays=100, lastday=-1, delay=9,
 
 
 
+    iex = dict(r7=3, sg=7)[source] # days of extrapolation
     y_lab = ax.get_ylim()[0]
 
     # add_labels(ax, labels, lab_x)
     ax.grid(which='both')
-    ax.axvline(Rt.index[-4], color='gray')
+    ax.axvline(Rt.index[-iex-1], color='gray')
     ax.axhline(1, color='k', linestyle='--')
     ax.text(Rt.index[-4], ax.get_ylim()[1], Rt.index[-4].strftime("%d %b "),
             rotation=90, horizontalalignment='right', verticalalignment='top')
-
-    ax.set_title('Reproductiegetal o.b.v. positieve tests; laatste 3 dagen zijn een extrapolatie\n'
-                 f'(Generatie-interval: {Tc:.3g} dg, rapportagevertraging {delay} dg)' )
+    ax.set_title(f'Reproductiegetal o.b.v. positieve tests; laatste {iex} dagen zijn een extrapolatie\n'
+                 f'(Generatie-interval: {Tc:.3g} dg, rapportagevertraging {delay} dg) '
+                 f'[{source}]')
     ax.set_ylabel('Reproductiegetal $R_t$')
 
     # get second y axis
@@ -531,10 +550,11 @@ if __name__ == '__main__':
     get_mun_data(df, 'Nederland', 5e6, printrows=5)
 
     plot_Rt_oscillation()
-    plot_daily_trends(df, ndays=100, lastday=-1, use_r7=True, minpop=2e5)
-    plot_Rt(df, ndays=130, lastday=-1, delay=9, Rt_rivm=Rt_rivm)
+    plot_daily_trends(df, ndays=100, lastday=-1, source='r7', minpop=2e5)
+    plot_Rt(df, ndays=130, lastday=-1, delay=9, Rt_rivm=Rt_rivm, source='r7')
+    #plot_Rt(df, ndays=130, lastday=-1, delay=9, Rt_rivm=Rt_rivm, source='sg')
     plot_Rt(df, ndays=40, lastday=-1, delay=9, Rt_rivm=Rt_rivm,
-            regions='HR:Noord,HR:Midden+Zuid')
+            regions='HR:Noord,HR:Midden+Zuid', source='r7')
 
     # pause (for command-line use)
     tools.pause_commandline('Press Enter to end.')
