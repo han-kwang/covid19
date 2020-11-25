@@ -42,7 +42,11 @@ import matplotlib
 import scipy.signal
 
 # Note: need to run this twice before NL locale takes effect.
-locale.setlocale(locale.LC_ALL, 'nl_NL.UTF-8')
+try:
+    locale.setlocale(locale.LC_ALL, 'nl_NL.UTF-8')
+except locale.Error as e:
+    print(f'Warning: cannot set language: {e.args[0]}')
+
 
 
 CONFIG = dict(
