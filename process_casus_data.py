@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Script for casus analysis (using functions from casus_analysis.py)."""
+"""Script for casus analysis (using functions from casus_analysis.py).
+
+"""
 
 from copy import deepcopy
 import matplotlib.pyplot as plt
@@ -7,7 +9,6 @@ import matplotlib
 import pandas as pd
 import numpy as np
 import casus_analysis as ca
-import urllib.request
 import tools
 
 def get_summary_df(maxageh=1, force_today=False):
@@ -418,8 +419,10 @@ def plots_for_report(plots='dcm,fdc,nnc,nc10,sdow,crecom,fixj1,fixj2',
 if __name__ == '__main__':
     pass
 
-    # # Note, because of multiprocessing for data loading,
-    # # avoid adding interactive/slow code outside the main block.
+    # Note, because of multiprocessing for data loading,
+    # avoid adding interactive/slow code outside the main block.
+    # If multiprocessing gives trouble, uncomment the following line.
+    # ca.set_conf(max_num_cpu=1)
 
     plt.close('all')
 

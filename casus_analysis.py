@@ -33,7 +33,7 @@ import pickle
 import time
 from pathlib import Path
 from multiprocessing import Pool, cpu_count
-import urllib
+import urllib.request
 import gzip
 import pandas as pd
 import numpy as np
@@ -64,9 +64,9 @@ CONFIG = dict(
 def set_conf(**kwargs):
     """Set configuration parameters (CONFIG global variable)."""
 
-    for k, v in kwargs:
+    for k, v in kwargs.items():
         if k in CONFIG:
-            CONFIG[k] = type(CONFIG(k))(v)
+            CONFIG[k] = type(CONFIG[k])(v)
         else:
             raise KeyError(k)
 
@@ -206,6 +206,8 @@ def download_rivm_casus_files(force_today=False):
     if len(fdates_missing) > 10:
         input(f'Warning: do you really want to download {len(fdates_missing)}'
               'huge data files? Ctrl-C to abort, ENTER to continue.')
+    else:
+        print(f'Will attempt to download case data for {len(fdates_missing)} days.')
 
     fname_template = 'COVID-19_casus_landelijk_{date}.csv'
     url_template = (
@@ -230,7 +232,8 @@ def download_rivm_casus_files(force_today=False):
         with gzip.open(fpath, 'wb') as f:
             f.write(data_bytes)
         print(f'Wrote {fpath} .')
-        return len(fdates_missing)
+
+    return len(fdates_missing)
 
 
 def _load_one_df(date):
