@@ -8,14 +8,15 @@ This is best run inside Spyder, not as standalone script.
 Author: @hk_nien on Twitter.
 """
 import re
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
+import sys
 import urllib
 import urllib.request
 from pathlib import Path
 import time
 import locale
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 from holiday_regions import add_holiday_regions
 import scipy.signal
 import tools
@@ -64,12 +65,50 @@ def load_restrictions():
     df.set_index('Date', inplace=True)
     return df
 
+
+def download_Rt_rivm(maxage='16 days 15 hours',  force=False):
+    """Download reproduction number from RIVM if new version is available.
+
+    Parameters:
+
+    - maxage: maximum time difference between last datapoint and present time.
+    - force: whether to download without checking the date.
+
+    Usually, data is published on Tue 14:30 covering data up to Sunday the
+    week before, so the data will be stale after 16 days 14:30 h.
+    Data is downloaded from a Git repository that has some delay w.r.t. the
+    RIVM publication.
+    """
+
+    # get last date available locally
+    fpath = Path('data/RIVM_NL_reproduction_index.csv')
+    if fpath.is_file():
+        df = pd.read_csv(fpath)
+        last_time = pd.to_datetime(df['Datum'].iloc[-1])
+        now_time = pd.to_datetime('now')
+        if not (force or now_time >= last_time + pd.Timedelta(maxage)):
+            print('Not updating RIVM Rt data; seems recent enough')
+            return
+        local_file_data = fpath.read_bytes()
+    else:
+        local_file_data = b'dummy'
+
+    url = 'https://raw.githubusercontent.com/J535D165/CoronaWatchNL/master/data-dashboard/data-reproduction/RIVM_NL_reproduction_index.csv'
+    print(f'Getting latest R data ...')
+    with urllib.request.urlopen(url) as response:
+        data_bytes = response.read()
+        if data_bytes == local_file_data:
+            print(f'{fpath}: already latest version.')
+        else:
+            fpath.write_bytes(data_bytes)
+            print(f'Wrote {fpath} .')
+
 def load_Rt_rivm():
     """Return Rt DataFrame, with Date index (12:00), columns R, Rmax, Rmin."""
 
     # File source:
-    # https://raw.githubusercontent.com/J535D165/CoronaWatchNL/master/data-dashboard/data-reproduction/RIVM_NL_reproduction_index.csv
-    df_full = pd.read_csv('data/rivm_reproduction_number.csv')
+    download_Rt_rivm()
+    df_full = pd.read_csv('data/RIVM_NL_reproduction_index.csv')
     df_full['Datum'] = pd.to_datetime(df_full['Datum']) + pd.Timedelta(12, 'h')
     df = df_full[df_full['Type'] == ('Reproductie index')][['Datum', 'Waarde']].copy()
     df.set_index('Datum', inplace=True)
@@ -100,16 +139,15 @@ def update_cum_cases_csv(force=False):
 
             tm_file = fpath.stat().st_mtime
             if tm_file > tm_latest + 1800: # after 14:30
-                print('Not updating file; seems to bxe recent enough.')
+                print('Not updating cumulative case file; seems to be recent enough.')
                 return
             if tm_file > tm_latest:
-                print('file may or may not be the latest version.')
-                print('Use update_csv(force=True) to be sure.')
+                print('Cumulative case data file may or may not be the latest version.')
+                print('Use update_cum_cases_csv(force=True) to be sure.')
                 return
 
-
     url = 'https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_cumulatief.csv'
-    print(f'Getting new file ...')
+    print(f'Getting new daily case statistics file%...')
     with urllib.request.urlopen(url) as response:
         data_bytes = response.read()
         if data_bytes == local_file_data:
