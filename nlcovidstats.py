@@ -19,6 +19,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from holiday_regions import add_holiday_regions
 import scipy.signal
+import scipy.interpolate
+import scipy.integrate
 import tools
 
 
@@ -147,7 +149,7 @@ def update_cum_cases_csv(force=False):
                 return
 
     url = 'https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_cumulatief.csv'
-    print(f'Getting new daily case statistics file%...')
+    print(f'Getting new daily case statistics file...')
     with urllib.request.urlopen(url) as response:
         data_bytes = response.read()
         if data_bytes == local_file_data:
@@ -247,29 +249,130 @@ def get_mun_data(df, mun, n_inw, lastday=-1, printrows=0):
 
     return df1
 
+
+def construct_Dfunc(delays, plot=False):
+    """Return interpolation functions fD(t) and fdD(t).
+
+    Parameter:
+
+    - delays: tuples (time_report, delay_days)
+    - plot: whether to generate a plot.
+
+    Return:
+
+    - fD: interpolation function for D(t) with t in nanoseconds.
+    - fdD: interpolation function for dD/dt.
+      (taking time in ns but returning dD per day.)
+    - delay_str: delay string e.g. '7' or '7-9'
+    """
+
+    ts0 = [float(pd.to_datetime(x[0]).to_datetime64()) for x in delays]
+    Ds0 = [float(x[1]) for x in delays]
+    if len(delays) == 1:
+        # prevent interp1d complaining.
+        ts0 = [ts0[0], ts0[0]+1e9]
+        Ds0 = np.concatenate([Ds0, Ds0])
+
+    # delay function as linear interpolation;
+    # nanosecond timestamps as t value.
+    fD0 = scipy.interpolate.interp1d(
+        ts0, Ds0, kind='linear', bounds_error=False,
+        fill_value=(Ds0[0], Ds0[-1])
+    )
+
+    # construct derivative dD/dt, smoothen out
+    day = 1e9*86400 # one day in nanoseconds
+    ts = np.arange(ts0[0]-3*day, ts0[-1]+3.01*day, day)
+    dDs = (fD0(ts+3*day) - fD0(ts-3*day))/6
+    fdD = scipy.interpolate.interp1d(
+        ts, dDs, 'linear', bounds_error=False,
+        fill_value=(dDs[0], dDs[-1]))
+
+    # reconstruct D(t) to be consistent with the smoothened derivative.
+    Ds = scipy.integrate.cumtrapz(dDs, ts/day, initial=0) + Ds0[0]
+    fD = scipy.interpolate.interp1d(
+        ts, Ds, 'linear', bounds_error=False,
+        fill_value=(Ds[0], Ds[-1]))
+
+    Dmin, Dmax = np.min(Ds0), np.max(Ds0)
+    if Dmin == Dmax:
+        delay_str = f'{Dmin:.0f}'
+    else:
+        delay_str = f'{Dmin:.0f}-{Dmax:.0f}'
+
+    if plot:
+        fig, ax = plt.subplots(1, 1, figsize=(7, 3), tight_layout=True)
+        tsx = np.linspace(
+            ts[0],
+            int(pd.to_datetime('now').to_datetime64())
+            )
+        ax.plot(pd.to_datetime(tsx.astype(int)), fD(tsx))
+        plt.xticks(rotation=-20)
+        ax.set_xlabel('Rapportagedatum')
+        ax.set_ylabel('Vertraging (dagen)')
+        for tl in ax.get_xticklabels():
+            tl.set_ha('left')
+        ax.grid()
+        fig.canvas.set_window_title('Vertraging infectiedatum - rapportage')
+        fig.show()
+
+    return fD, fdD, delay_str
+
+
 def estimate_Rt_series(r, delay=9, Tc=4.0):
-    """Return Rt data, assuming delay infection-reporting.
+    """Return Rt data, assuming delay infection-reporting.q
 
     - r: Series with smoothed new reported cases.
       (e.g. 7-day rolling average or other smoothed data).
-    - delay: assume delay (days) from date of infection.
+    - delay: assume delay days from infection to positive report.
+      alternatively: list of (timestamp, delay) tuples if the delay varies over time.
+      The timestamps refer to the date of report.
     - Tc: assume generation interval.
 
     Return:
 
     - Series with name 'Rt' (shorter than r by delay+1).
+    - delay_str: delay as string (e.g. '9' or '7-9')
     """
 
-    log_r = np.log(r.to_numpy()) # shape (n,)
-    assert len(log_r.shape) == 1
+    if not hasattr(delay, '__getitem__'):
+        # simple delay - attach data to index with proper offset
+        log_r = np.log(r.to_numpy()) # shape (n,)
+        assert len(log_r.shape) == 1
 
-    log_slope = (log_r[2:] - log_r[:-2])/2 # (n-2,)
+        log_slope = (log_r[2:] - log_r[:-2])/2 # (n-2,)
+        Rt = np.exp(Tc*log_slope) # (n-2,)
+
+        index = r.index[1:-1] - pd.Timedelta(delay, unit='days')
+        return pd.Series(index=index, data=Rt, name='Rt'), f'{delay}'
+
+    # the hard case: delay varies over time.
+    # if ri is the rate of infections, tr the reporting date, and D
+    # the delay, then:
+    # ri(tr-D(tr)) = r(tr) / (1 - dD/dt)
+    fD, fdD, delay_str = construct_Dfunc(delay)
+
+    # note: timestamps in nanoseconds, rates in 'per day' units.
+    day_ns = 86400e9
+    tr = r.index.astype(int)
+    ti = tr - fD(tr) * day_ns
+    ri = r.to_numpy() / (1 - fdD(tr))
+
+    # now get log-derivative the same way as above
+    log_ri = np.log(ri)
+    log_slope = (log_ri[2:] - log_ri[:-2])/2 # (n-2,)
     Rt = np.exp(Tc*log_slope) # (n-2,)
 
-    # Attach to index with proper offset
-    index = r.index[1:-1] - pd.Timedelta(delay, unit='days')
+    # build series with timestamp index
+    Rt_series = pd.Series(
+        data=Rt, name='Rt',
+        index=pd.to_datetime(ti[1:-1].astype(int))
+    )
 
-    return pd.Series(index=index, data=Rt, name='Rt')
+    return Rt_series, delay_str
+
+
+
 
 
 def get_t2_Rt(ncs, delta_t, i0=-3):
@@ -322,7 +425,7 @@ def add_labels(ax, labels, xpos, mindist_scale=1.0, logscale=True):
     new_Ys = fmin_cobyla(func, Ys, cons, catol=mindist*0.05)
 
     for Y, (_, txt) in zip(new_Ys, labels):
-        y = 10**Y if logscale else y
+        y = 10**Y if logscale else Y
         ax.text(xpos, y, txt, verticalalignment='center')
 
 
@@ -384,7 +487,7 @@ def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
     y_lab = ax.get_ylim()[0]
 
     for res_t, res_d in df_restrictions['Description'].iteritems():
-    #    if res_t >= t_min:
+        #    if res_t >= t_min:
             ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
 
 
@@ -433,8 +536,10 @@ def plot_Rt(df, ndays=100, lastday=-1, delay=9,
     """Plot daily-case trends.
 
     - df: DataFrame with processed per-municipality data.
-    - lastday: up to this day.
+    - lastday: use case data up to this day.
     - delay: assume delay days from infection to positive report.
+      alternatively: list of (timestamp, delay) tuples if the delay varies over time.
+      The timestamps refer to the date of report. See doc of estimeate_Rt_series.
     - source: 'r7' or 'sg' for rolling 7-day average or Savitsky-Golay-
       filtered data.
     - Tc: generation interval time
@@ -458,9 +563,9 @@ def plot_Rt(df, ndays=100, lastday=-1, delay=9,
         df1 = get_mun_data(df, region, 1e9, lastday=lastday)
         source_col = dict(r7='Delta7r', sg='DeltaSG')[source]
 
-        Rt = estimate_Rt_series(df1[source_col].iloc[-ndays-delay:],
-                                delay=delay, Tc=Tc)
-
+        # skip the first 10 days because of zeros
+        Rt, delay_str = estimate_Rt_series(df1[source_col].iloc[10:], delay=delay, Tc=Tc)
+        Rt = Rt.iloc[-ndays:]
         fmt = 'o-' if ndays < 70 else '-'
         psize = 5 if ndays < 30 else 3
 
@@ -498,7 +603,7 @@ def plot_Rt(df, ndays=100, lastday=-1, delay=9,
     ax.text(Rt.index[-4], ax.get_ylim()[1], Rt.index[-4].strftime("%d %b "),
             rotation=90, horizontalalignment='right', verticalalignment='top')
     ax.set_title(f'Reproductiegetal o.b.v. positieve tests; laatste {iex} dagen zijn een extrapolatie\n'
-                 f'(Generatie-interval: {Tc:.3g} dg, rapportagevertraging {delay} dg) '
+                 f'(Generatie-interval: {Tc:.3g} dg, rapportagevertraging {delay_str} dg) '
                  f'[{source}]')
     ax.set_ylabel('Reproductiegetal $R_t$')
 
@@ -569,6 +674,13 @@ def plot_Rt_oscillation():
 
 if __name__ == '__main__':
 
+    # Which plots to show.
+    show_plots = 'Rtosc,trends,RtD9,Rt,RtRegion,delay'.split(',')
+
+    # Uncomment and change line below to do a selection of plots rather than
+    # all of them.
+    # show_plots = 'RtD9,Rt,delay'.split(',')
+
     # Note: need to run this twice before NL locale takes effect.
     try:
         locale.setlocale(locale.LC_ALL, 'nl_NL.UTF-8')
@@ -587,12 +699,36 @@ if __name__ == '__main__':
 
     get_mun_data(df, 'Nederland', 5e6, printrows=5)
 
-    plot_Rt_oscillation()
-    plot_daily_trends(df, ndays=100, lastday=-1, source='r7', minpop=2e5)
-    plot_Rt(df, ndays=130, lastday=-1, delay=9, Rt_rivm=Rt_rivm, source='r7')
-    #plot_Rt(df, ndays=130, lastday=-1, delay=9, Rt_rivm=Rt_rivm, source='sg')
-    plot_Rt(df, ndays=40, lastday=-1, delay=9, Rt_rivm=Rt_rivm,
-            regions='HR:Noord,HR:Midden+Zuid', source='r7')
+    if 'Rtosc' in show_plots:
+        plot_Rt_oscillation()
+
+    if 'trends' in show_plots:
+        plot_daily_trends(df, ndays=100, lastday=-1, source='r7', minpop=2e5)
+
+    # These delay values are tuned to match the RIVM Rt estimates.
+    delays = [
+        ('2020-07-01', 7.5),
+        ('2020-09-01', 7),
+        ('2020-09-15', 9),
+        ('2020-10-09', 9),
+        ('2020-11-08', 7)
+        ]
+
+    if 'delay' in show_plots:
+        construct_Dfunc(delays, plot=True)
+
+    if 'RtD9' in show_plots:
+        plot_Rt(df, ndays=120, lastday=-1, delay=9, Rt_rivm=Rt_rivm, source='r7')
+
+    if 'Rt' in show_plots:
+
+        plot_Rt(df, ndays=120, lastday=-1, delay=delays, Rt_rivm=Rt_rivm, source='r7')
+        # source='sg' doesn't seem to be useful.
+        #plot_Rt(df, ndays=130, lastday=-1, delay=9, Rt_rivm=Rt_rivm, source='sg')
+
+    if 'RtRegion' in show_plots:
+        plot_Rt(df, ndays=40, lastday=-1, delay=delays, Rt_rivm=Rt_rivm,
+                regions='HR:Noord,HR:Midden+Zuid', source='r7')
 
     # pause (for command-line use)
     tools.pause_commandline('Press Enter to end.')
