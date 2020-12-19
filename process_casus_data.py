@@ -417,8 +417,6 @@ def plots_for_report(plots='dcm,fdc,nnc,nc10,sdow,crecom,fixj1,fixj2',
 
 
 if __name__ == '__main__':
-    pass
-
     # Note, because of multiprocessing for data loading,
     # avoid adding interactive/slow code outside the main block.
     # If multiprocessing gives trouble, uncomment the following line.
@@ -432,13 +430,14 @@ if __name__ == '__main__':
 
     ## This will create all plots (both on-screen and stored as files).
     ## Warning: major screen clutter.
-    # plots_for_report(show=True)
+    plots_for_report(show=True)
 
     ## This will create all plots as files.
-    # plots_for_report(show=False)
+    plots_for_report(show=False)
 
     ## This will create and show one plot. See doc of plots_for_report.
     plots_for_report('fixj2', show=True)
+
 
     # pause (for command-line use)
     tools.pause_commandline('Press Enter to end.')

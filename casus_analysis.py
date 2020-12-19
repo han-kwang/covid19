@@ -31,6 +31,7 @@ import re
 import locale
 import pickle
 import time
+import sys
 from pathlib import Path
 from multiprocessing import Pool, cpu_count
 import urllib.request
@@ -49,6 +50,9 @@ except locale.Error as e:
 
 
 
+
+
+
 CONFIG = dict(
     # casus data (huge gzipped csv files)
     cdpath=Path(__file__).parent / 'data-casus',
@@ -59,6 +63,15 @@ CONFIG = dict(
     # managing multiprocessing
     max_num_cpu=6, # max number of cpus
     max_frac_cpu=0.75, # max fraction of available cpus to use.
+    # list of directories that may contain a clone of the repository
+    # https://github.com/mzelst/covid-19.git .
+    # For getting the latest 'casus data', it will check there before
+    # downloading from internet.
+    # parents[1] means one directory up from the script directory.
+    mzelst_repro_dirs = [
+        Path(__file__).parents[1] / 'mzelst-covid19-nobackup',
+        Path(__file__).parents[1] / 'mzelst-covid-19',
+        ],
     )
 
 def set_conf(**kwargs):
@@ -155,11 +168,61 @@ def load_casus_summary(date):
 
     return dfsum
 
+
+def get_rivm_casus_files_from_local_repo(fdates):
+    """Attempt to get casus data files from local clone of the
+    mzelst repository and place gzipped copy in data-casus folder.
+
+    Parameter:
+
+    - fdates: list or set of 'yyyy-mm-dd' strings.
+
+    Return:
+
+    - fdates: list of remaining 'yyyy-mm-dd' strings (that were not found).
+    """
+
+    for repo_path in CONFIG['mzelst_repro_dirs']:
+        if repo_path.is_dir():
+            break
+    else:
+        # Not found.
+        print('No local mzelst/covid-19 repo avalailable.')
+        return fdates
+
+
+    repo_subdir = repo_path / 'data-rivm/casus-datasets'
+    fname_template = 'COVID-19_casus_landelijk_{date}.csv'
+    fdates_missing = set()
+    for fdate in fdates:
+        fname = fname_template.format(date=fdate)
+        fpath = repo_subdir / fname
+        if not fpath.is_file():
+            fdates_missing.add(fdate)
+            continue
+
+        fpath_out = CONFIG["cdpath"] / (fname_template.format(date=fdate) + '.gz')
+
+        with fpath.open('rb') as f_in, gzip.open(fpath_out, 'wb') as f_out:
+            data_bytes = f_in.read()
+            f_out.write(data_bytes)
+            print(f'Wrote {fpath_out}\n   (from {fpath}).')
+
+    if len(fdates_missing) == len(fdates):
+        print(f'No recent casus data available in {repo_path} .')
+    elif len(fdates_missing) > 0:
+        print(f'Not all recent casus data was available in {repo_path} .')
+
+    return sorted(fdates_missing)
+
+
 def download_rivm_casus_files(force_today=False):
     """Download missing day files in data-casus.
 
     Download from here:
     https://github.com/mzelst/covid-19/tree/master/data-rivm/casus-datasets
+    or from a local clone of that repository (as specified in the global CONFIG
+    variable)
 
     The CSV layout is slightsly different from the RIVM data.
     The files as downloaded are huge, though highly compressible and stored
@@ -203,6 +266,9 @@ def download_rivm_casus_files(force_today=False):
         print('Casus files up to date.')
         return 0
 
+
+    fdates_missing = get_rivm_casus_files_from_local_repo(fdates_missing)
+
     if len(fdates_missing) > 10:
         input(f'Warning: do you really want to download {len(fdates_missing)}'
               'huge data files? Ctrl-C to abort, ENTER to continue.')
@@ -230,6 +296,7 @@ def download_rivm_casus_files(force_today=False):
                 raise ValueError(f'Bad or incomplete data in {url}.')
 
         with gzip.open(fpath, 'wb') as f:
+
             f.write(data_bytes)
         print(f'Wrote {fpath} .')
 
