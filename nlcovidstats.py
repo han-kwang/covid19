@@ -9,6 +9,7 @@ Author: @hk_nien on Twitter.
 """
 import re
 import sys
+import io
 import urllib
 import urllib.request
 from pathlib import Path
@@ -88,8 +89,11 @@ def load_restrictions():
     return df
 
 
-def download_Rt_rivm(maxage='16 days 15 hours',  force=False):
+def download_Rt_rivm_coronawatchNL(maxage='16 days 15 hours',  force=False):
     """Download reproduction number from RIVM if new version is available.
+
+    Old function; CoronawatchNL is not updated anymore, so it seems
+    (2020-12-20).
 
     Parameters:
 
@@ -115,6 +119,7 @@ def download_Rt_rivm(maxage='16 days 15 hours',  force=False):
     else:
         local_file_data = b'dummy'
 
+    # Data via CoronawatchNL seems stale as of 2020-12-20
     url = 'https://raw.githubusercontent.com/J535D165/CoronaWatchNL/master/data-dashboard/data-reproduction/RIVM_NL_reproduction_index.csv'
     print(f'Getting latest R data ...')
     with urllib.request.urlopen(url) as response:
@@ -125,21 +130,104 @@ def download_Rt_rivm(maxage='16 days 15 hours',  force=False):
             fpath.write_bytes(data_bytes)
             print(f'Wrote {fpath} .')
 
-def load_Rt_rivm(autoupdate=True):
-    """Return Rt DataFrame, with Date index (12:00), columns R, Rmax, Rmin."""
 
-    # File source:
-    if autoupdate:
-        download_Rt_rivm()
-    df_full = pd.read_csv('data/RIVM_NL_reproduction_index.csv')
-    df_full['Datum'] = pd.to_datetime(df_full['Datum']) + pd.Timedelta(12, 'h')
-    df = df_full[df_full['Type'] == ('Reproductie index')][['Datum', 'Waarde']].copy()
-    df.set_index('Datum', inplace=True)
-    df.rename(columns={'Waarde': 'R'}, inplace=True)
-    df['Rmax'] = df_full[df_full['Type'] == ('Maximum')][['Datum', 'Waarde']].set_index('Datum')
-    df['Rmin'] = df_full[df_full['Type'] == ('Minimum')][['Datum', 'Waarde']].set_index('Datum')
-    return df
 
+def download_Rt_rivm(maxage='16 days 15 hours',  force=False):
+    """Download reproduction number from RIVM if new version is available.
+
+    Parameters:
+
+    - maxage: maximum time difference between last datapoint and present time.
+    - force: whether to download without checking the date.
+
+    Usually, data is published on Tue 14:30 covering data up to Sunday the
+    week before, so the data will be stale after 16 days 14:30 h.
+
+    For history purposes, files will be saved as
+    'rivm_reproductiegetal.csv' (latest)
+    'rivm_reproductiegetal-yyyymmdd.csv' (by most recent date in the data file).
+    """
+
+
+    # get last date available locally
+    fname_tpl = 'data/rivm_reproductiegetal{}.csv'
+    fpath = Path(fname_tpl.format(''))
+
+    if fpath.is_file():
+        df = pd.read_csv(fpath)
+        last_time = pd.to_datetime(df['Date'].iloc[-1])
+        now_time = pd.to_datetime('now')
+        if not (force or now_time >= last_time + pd.Timedelta(maxage)):
+            print('Not updating RIVM Rt data; seems recent enough')
+            return
+        local_file_data = fpath.read_bytes()
+    else:
+        local_file_data = b'dummy'
+
+    url = 'https://data.rivm.nl/covid-19/COVID-19_reproductiegetal.json'
+    print(f'Getting latest R data from RIVM...')
+    with urllib.request.urlopen(url) as response:
+        json_bytes = response.read()
+        f = io.BytesIO(json_bytes)
+        df = pd.read_json(f) # Columns Date, Rt_low, Rt_avg Rt_up, ...
+        df.set_index('Date', inplace=True)
+
+        f = io.StringIO()
+        df.to_csv(f, float_format='%.4g')
+        f.seek(0)
+        data_bytes = f.read().encode('utf-8')
+
+        if data_bytes == local_file_data:
+            print(f'{fpath}: already latest version.')
+        else:
+            fpath.write_bytes(data_bytes)
+            print(f'Wrote {fpath} .')
+            ymd = df.index[-1].strftime('-%Y-%m-%d')
+            fpath_arch = Path(fname_tpl.format(ymd))
+            fpath_arch.write_bytes(data_bytes)
+            print(f'Wrote {fpath_arch} .')
+
+
+def load_Rt_rivm(autoupdate=True, source='rivm'):
+    """Return Rt DataFrame, with Date index (12:00), columns R, Rmax, Rmin.
+
+    Source can be 'rivm' or 'coronawatchnl'.
+    """
+
+    if source == 'coronawatchnl':
+        if autoupdate:
+            download_Rt_rivm_coronawatchNL()
+
+        df_full = pd.read_csv('data/RIVM_NL_reproduction_index.csv')
+        df_full['Datum'] = pd.to_datetime(df_full['Datum']) + pd.Timedelta(12, 'h')
+        df = df_full[df_full['Type'] == ('Reproductie index')][['Datum', 'Waarde']].copy()
+        df.set_index('Datum', inplace=True)
+        df.rename(columns={'Waarde': 'R'}, inplace=True)
+        df['Rmax'] = df_full[df_full['Type'] == ('Maximum')][['Datum', 'Waarde']].set_index('Datum')
+        df['Rmin'] = df_full[df_full['Type'] == ('Minimum')][['Datum', 'Waarde']].set_index('Datum')
+        return df
+
+    if source == 'rivm':
+        if autoupdate:
+            download_Rt_rivm()
+
+        df = pd.read_csv('data/rivm_reproductiegetal.csv')
+
+        df2 = pd.DataFrame(
+            {'Datum': pd.to_datetime(df['Date']) + pd.Timedelta(12, 'h')}
+            )
+        df2['R'] = df['Rt_avg']
+        df2['Rmin'] = df['Rt_low']
+        df2['Rmax'] = df['Rt_up']
+        df2.set_index('Datum', inplace=True)
+
+        # last row may be all-NaN; eliminate such rows.
+        df2 = df2.loc[~df2['Rmin'].isna()]
+
+        return df2
+
+
+    raise ValueError(f'source={source!r}')
 
 def update_cum_cases_csv(force=False):
     """Update 'cumulative data' csv file (if not recently updated)."""
@@ -758,18 +846,19 @@ def plot_Rt_oscillation():
 
     fig.show()
 
-def init_data(autoupdate=True):
+def init_data(autoupdate=True, Rt_source='rivm'):
     """Init global dict DFS with 'mun', 'Rt_rivm', 'cases', 'restrictions'.
 
     Parameters:
 
     - autoupdate: whether to attempt to receive recent data from online
       sources.
+    - Rt_source: 'rivm' or 'coronawatchnl' (where to download Rt data).
     """
 
     DFS['mun'] = load_municipality_data()
     DFS['cases'] = df = load_cumulative_cases(autoupdate=autoupdate)
-    DFS['Rt_rivm'] = load_Rt_rivm(autoupdate=autoupdate)
+    DFS['Rt_rivm'] = load_Rt_rivm(autoupdate=autoupdate, source=Rt_source)
     DFS['restrictions'] = load_restrictions()
     dfa = pd.read_csv('data/daily_numbers_anomalies.csv', comment='#')
     dfa['Date_report'] = pd.to_datetime(dfa['Date_report']) + pd.Timedelta('10 h')
