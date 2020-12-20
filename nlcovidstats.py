@@ -30,6 +30,26 @@ except NameError:
     DATA_PATH = Path('data')
 
 
+# These delay values are tuned to match the RIVM Rt estimates.
+# The represent the delay (days) from infection to report date,
+# referencing the report date.
+DELAY_INF2REP = [
+    ('2020-07-01', 7.5),
+    ('2020-09-01', 7),
+    ('2020-09-15', 9),
+    ('2020-10-09', 9),
+    ('2020-11-08', 7)
+    ]
+
+# this will contain dataframes, initialized by init_data().
+# - mun: municipality demograhpics
+# - cases: cases by municipality
+# - restrictions: Dutch restrictions by date
+# - Rt_rivm: RIVM Rt estimates
+# - anomalies: anomaly data
+DFS = {}
+
+
 #%%
 
 
@@ -105,11 +125,12 @@ def download_Rt_rivm(maxage='16 days 15 hours',  force=False):
             fpath.write_bytes(data_bytes)
             print(f'Wrote {fpath} .')
 
-def load_Rt_rivm():
+def load_Rt_rivm(autoupdate=True):
     """Return Rt DataFrame, with Date index (12:00), columns R, Rmax, Rmin."""
 
     # File source:
-    download_Rt_rivm()
+    if autoupdate:
+        download_Rt_rivm()
     df_full = pd.read_csv('data/RIVM_NL_reproduction_index.csv')
     df_full['Datum'] = pd.to_datetime(df_full['Datum']) + pd.Timedelta(12, 'h')
     df = df_full[df_full['Type'] == ('Reproductie index')][['Datum', 'Waarde']].copy()
@@ -159,10 +180,15 @@ def update_cum_cases_csv(force=False):
             print(f'Wrote {fpath} .')
 
 
-def load_cumulative_cases():
-    """Return df with cumulative cases by municipality. Retrieve from internet if needed."""
 
-    update_cum_cases_csv()
+def load_cumulative_cases(autoupdate=True):
+    """Return df with cumulative cases by municipality. Retrieve from internet if needed.
+
+    - autoupdate: whether to retrieve latest data from internet.
+    """
+
+    if autoupdate:
+        update_cum_cases_csv()
 
     df = pd.read_csv('data/COVID-19_aantallen_gemeente_cumulatief.csv', sep=';')
     # Removing 'municipality unknown' records.
@@ -175,18 +201,47 @@ def load_cumulative_cases():
     df = df.loc[~df.Municipality_code.isna()] # Remove NA records.
     df = add_holiday_regions(df)
     df['Date_of_report'] = pd.to_datetime(df['Date_of_report'])
+
     return df
 
 
+def _correct_delta_anomalies(df):
+    """Apply anomaly correction to 'Delta' column.
+
+    Store original values to 'Delta_orig' column.
+    Pull data from DFS['anomalies']
+    """
+
+    dfa = DFS['anomalies']
+    df['Delta_orig'] = df['Delta'].copy()
+
+    dt_tol = pd.Timedelta(12, 'h') # tolerance on date matching
+    match_date = lambda dt: abs(df.index - dt) < dt_tol
+
+    for (date, data) in dfa.iterrows():
+        f = data['fraction']
+        dt = data['days_back']
+        dn = df.loc[match_date(date), 'Delta_orig'] * f
+        assert len(dn) == 1
+        dn = dn[0]
+        df.loc[match_date(date), 'Delta'] -= dn
+        df.loc[match_date(date + pd.Timedelta(dt, 'd')), 'Delta'] += dn
+
+    assert np.isclose(df["Delta"].sum(), df["Delta_orig"].sum(), rtol=1e-6, atol=0)
 
 
-def get_mun_data(df, mun, n_inw, lastday=-1, printrows=0):
-    """Return dataframe for one municipality, with added columns.
+def get_mun_data(mun, n_inw, lastday=-1, printrows=0, correct_anomalies=True):
+    """Return dataframe with case counts for one municipality, with added columns.
+
+    It uses the global DFS['mun'], DFS['cases'] dataframe.
 
     Parameters:
 
+    - mun: municipality name.
     - n_inw: minimum population
     - printrows: print this many of the most recent rows
+    - correct_anomalies: correct known anomalies (hiccups in reporting)
+      by reassigning cases to earlier dates.
 
     Special municipalities:
 
@@ -203,6 +258,8 @@ def get_mun_data(df, mun, n_inw, lastday=-1, printrows=0):
       (last 3 days are estimated).
     - DeltaSG: daily increase, smoothed with (15, 2) Savitsky-Golay filter.
     """
+
+    df = DFS['cases']
 
     if mun == 'Nederland':
         df1 = df.groupby('Date_of_report').sum()
@@ -229,6 +286,11 @@ def get_mun_data(df, mun, n_inw, lastday=-1, printrows=0):
 
 
     nc.iat[0] = 0
+    df1['Delta'] = nc/n_inw
+    if correct_anomalies:
+        _correct_delta_anomalies(df1)
+        nc = df1['Delta'] * n_inw
+
     nc7 = nc.rolling(7, center=True).mean()
     nc7a = nc7.to_numpy()
     # last 3 elements are NaN, use mean of last 4 raw entries to
@@ -242,7 +304,6 @@ def get_mun_data(df, mun, n_inw, lastday=-1, printrows=0):
     # 1st 3 elements are NaN
     nc7.iloc[:3] = np.linspace(0, nc7.iloc[3], 3, endpoint=False)
 
-    df1['Delta'] = nc/n_inw
     df1['Delta7r'] = nc7/n_inw
     df1['DeltaSG'] = scipy.signal.savgol_filter(
         nc/n_inw, 15, 2, mode='interp')
@@ -429,16 +490,18 @@ def add_labels(ax, labels, xpos, mindist_scale=1.0, logscale=True):
         ax.text(xpos, y, txt, verticalalignment='center')
 
 
-def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
-                      source='r7'):
-    """Plot daily-case trends.
+def plot_daily_trends(minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None, source='r7'):
+    """Plot daily-case trends (pull data from global DFS dict).
 
-    - df: DataFrame with processed per-municipality data.
     - minpop: minimum city population
     - lastday: up to this day.
     - source: 'r7' (7-day rolling average), 'raw' (no smoothing), 'sg'
       (Savitsky-Golay smoothed).
+    - df_restrictions: Dataframe with restriction texts.
     """
+
+    df_restrictions = DFS['restrictions']
+    df_mun = DFS['mun']
 
     fig, ax = plt.subplots(figsize=(12, 6))
     fig.subplots_adjust(top=0.945, bottom=0.085, left=0.09, right=0.83)
@@ -454,7 +517,7 @@ def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
         if mun_regexp and not re.match(mun_regexp, mun):
             continue
 
-        df1 = get_mun_data(df, mun, n_inw, lastday=lastday)
+        df1 = get_mun_data(mun, n_inw, lastday=lastday)
         df1 = df1.iloc[-ndays:]
 
         fmt = 'o-' if ndays < 70 else '-'
@@ -486,9 +549,10 @@ def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
 
     y_lab = ax.get_ylim()[0]
 
-    for res_t, res_d in df_restrictions['Description'].iteritems():
-        #    if res_t >= t_min:
-            ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
+    if df_restrictions is not None:
+        for res_t, res_d in df_restrictions['Description'].iteritems():
+            #    if res_t >= t_min:
+                ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
 
 
     dfc = pd.DataFrame.from_records(
@@ -530,12 +594,28 @@ def plot_daily_trends(df, minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None,
     fig.show()
 
 
-def plot_Rt(df, ndays=100, lastday=-1, delay=9,
+def plot_anomalies_deltas(ndays=120):
+    """Show effect of anomaly correction."""
+
+    df = get_mun_data('Nederland', 10e6, correct_anomalies=True)
+    fig, ax = plt.subplots(tight_layout=True, figsize=(8, 5))
+
+    col_labs = [('Delta_orig', 'Raw'), ('Delta', 'Anomalies corrected')]
+    for col, lab in col_labs:
+        ax.semilogy(df.iloc[-ndays:][col], label=lab)
+    ax.legend()
+    ax.grid()
+    title = 'Anomaly correction'
+    ax.set_title(title)
+    fig.canvas.set_window_title(title)
+    fig.show()
+
+
+def plot_Rt(ndays=100, lastday=-1, delay=9,
             regions='Nederland', source='r7',
-            Tc=4.0, Rt_rivm=None):
+            Tc=4.0, correct_anomalies=True):
     """Plot daily-case trends.
 
-    - df: DataFrame with processed per-municipality data.
     - lastday: use case data up to this day.
     - delay: assume delay days from infection to positive report.
       alternatively: list of (timestamp, delay) tuples if the delay varies over time.
@@ -543,11 +623,13 @@ def plot_Rt(df, ndays=100, lastday=-1, delay=9,
     - source: 'r7' or 'sg' for rolling 7-day average or Savitsky-Golay-
       filtered data.
     - Tc: generation interval time
-    - Rt_rivm: optional series with RIVM estimates.
     - regions: comma-separated string (or list of str);
       'Nederland', 'V:xx' (holiday region), 'P:xx' (province), 'M:xx'
       (municipality).
+    - correct_anomalies: whether to correct for known reporting anomalies.
     """
+
+    Rt_rivm = DFS['Rt_rivm']
 
     fig, ax = plt.subplots(figsize=(10, 5))
     fig.subplots_adjust(top=0.90, bottom=0.085, left=0.09, right=0.92)
@@ -560,7 +642,7 @@ def plot_Rt(df, ndays=100, lastday=-1, delay=9,
 
     for region in regions:
 
-        df1 = get_mun_data(df, region, 1e9, lastday=lastday)
+        df1 = get_mun_data(region, 1e9, lastday=lastday, correct_anomalies=correct_anomalies)
         source_col = dict(r7='Delta7r', sg='DeltaSG')[source]
 
         # skip the first 10 days because of zeros
@@ -621,6 +703,7 @@ def plot_Rt(df, ndays=100, lastday=-1, delay=9,
 
     xlim = (Rt.index[0] - pd.Timedelta('12 h'), Rt.index[-1] + pd.Timedelta('3 d'))
     ax.set_xlim(*xlim)
+    df_restrictions = DFS['restrictions']
     for res_t, res_d in df_restrictions['Description'].iteritems():
         if res_t >= xlim[0] and res_t <= xlim[1]:
             ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
@@ -637,10 +720,14 @@ def plot_Rt(df, ndays=100, lastday=-1, delay=9,
     fig.show()
 
 def plot_Rt_oscillation():
-    """Uses global Rt_rivm variable."""
+    """Uses global DFS['Rt_rivm'] variable."""
+
 
     fig, axs = plt.subplots(2, 1, tight_layout=True)
-    Rr = Rt_rivm['R'][~Rt_rivm['R'].isna()].to_numpy()
+
+    df_Rt_rivm = DFS['Rt_rivm']
+
+    Rr = df_Rt_rivm['R'][~df_Rt_rivm['R'].isna()].to_numpy()
     Rr = Rr[-120:]
     Rr_smooth = scipy.signal.savgol_filter(Rr, 15, 2)
 
@@ -671,15 +758,30 @@ def plot_Rt_oscillation():
 
     fig.show()
 
+def init_data(autoupdate=True):
+    """Init global dict DFS with 'mun', 'Rt_rivm', 'cases', 'restrictions'.
 
-if __name__ == '__main__':
+    Parameters:
 
-    # Which plots to show.
-    show_plots = 'Rtosc,trends,RtD9,Rt,RtRegion,delay'.split(',')
+    - autoupdate: whether to attempt to receive recent data from online
+      sources.
+    """
 
-    # Uncomment and change line below to do a selection of plots rather than
-    # all of them.
-    # show_plots = 'RtD9,Rt,delay'.split(',')
+    DFS['mun'] = load_municipality_data()
+    DFS['cases'] = df = load_cumulative_cases(autoupdate=autoupdate)
+    DFS['Rt_rivm'] = load_Rt_rivm(autoupdate=autoupdate)
+    DFS['restrictions'] = load_restrictions()
+    dfa = pd.read_csv('data/daily_numbers_anomalies.csv', comment='#')
+    dfa['Date_report'] = pd.to_datetime(dfa['Date_report']) + pd.Timedelta('10 h')
+    DFS['anomalies'] = dfa.set_index('Date_report')
+
+    print(f'Case data most recent date: {df["Date_of_report"].iat[-1]}')
+    get_mun_data('Nederland', 5e6, printrows=5)
+
+
+
+def reset_plots():
+    """Close plots and adjust default matplotlib settings."""
 
     # Note: need to run this twice before NL locale takes effect.
     try:
@@ -687,48 +789,10 @@ if __name__ == '__main__':
     except locale.Error as e:
         print(f'Warning: cannot set language: {e.args[0]}')
     plt.rcParams["date.autoformatter.day"] = "%d %b"
-
-    df_mun = load_municipality_data()
-    df = load_cumulative_cases()
-    Rt_rivm = load_Rt_rivm()
-    df_restrictions = load_restrictions()
-
-    print(f'CSV most recent date: {df["Date_of_report"].iat[-1]}')
-
     plt.close('all')
 
-    get_mun_data(df, 'Nederland', 5e6, printrows=5)
 
-    if 'Rtosc' in show_plots:
-        plot_Rt_oscillation()
 
-    if 'trends' in show_plots:
-        plot_daily_trends(df, ndays=100, lastday=-1, source='r7', minpop=2e5)
+if __name__ == '__main__':
 
-    # These delay values are tuned to match the RIVM Rt estimates.
-    delays = [
-        ('2020-07-01', 7.5),
-        ('2020-09-01', 7),
-        ('2020-09-15', 9),
-        ('2020-10-09', 9),
-        ('2020-11-08', 7)
-        ]
-
-    if 'delay' in show_plots:
-        construct_Dfunc(delays, plot=True)
-
-    if 'RtD9' in show_plots:
-        plot_Rt(df, ndays=120, lastday=-1, delay=9, Rt_rivm=Rt_rivm, source='r7')
-
-    if 'Rt' in show_plots:
-
-        plot_Rt(df, ndays=120, lastday=-1, delay=delays, Rt_rivm=Rt_rivm, source='r7')
-        # source='sg' doesn't seem to be useful.
-        #plot_Rt(df, ndays=130, lastday=-1, delay=9, Rt_rivm=Rt_rivm, source='sg')
-
-    if 'RtRegion' in show_plots:
-        plot_Rt(df, ndays=40, lastday=-1, delay=delays, Rt_rivm=Rt_rivm,
-                regions='HR:Noord,HR:Midden+Zuid', source='r7')
-
-    # pause (for command-line use)
-    tools.pause_commandline('Press Enter to end.')
+    print('Please run nlcovidstats_show.py or plot_R_from_daily_cases.py')

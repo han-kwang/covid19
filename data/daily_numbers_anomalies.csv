@@ -1,0 +1,15 @@
+# For these report dates, assign given fraction of the original number
+# of cases to case counts this many days back.
+Date_report,fraction,days_back,reference
+#
+2020-10-25,0.07,-1,https://nos.nl/artikel/2353767-10-211-nieuwe-coronabesmettingen-toename-deels-verklaarbaar-door-correctie.html
+2020-10-29,0.1,-1,https://nos.nl/artikel/2354331-rivm-10-280-besmettingen-2162-meer-dan-gisteren-mede-door-correctie.html
+2020-11-11,0.03,-1,https://nos.nl/artikel/2356151-5424-nieuwe-coronabesmettingen-ruim-700-meer-dan-gisteren.html
+2020-11-11,0.03,-2,https://nos.nl/artikel/2356151-5424-nieuwe-coronabesmettingen-ruim-700-meer-dan-gisteren.html
+2020-11-19,0.08,-1,https://nos.nl/artikel/2357215-meer-besmettingen-gemeld-door-correctie-5725-nieuwe-positieve-tests.html
+# data from 13-14-15 Dec is missing 6000 cases; "catch up in next few days"
+2020-12-16,0.05,-2,https://nos.nl/artikel/2360784-rivm-aantal-besmettingen-deze-week-met-minstens-36-procent-toegenomen.html
+2020-12-16,0.05,-1
+2020-12-17,0.15,-2,https://nos.nl/artikel/2361044-rivm-meldt-12-844-nieuwe-besmettingen-hoger-door-correctie-na-storing.html
+2020-12-18,0.05,-3,
+# EOF
