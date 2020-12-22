@@ -18,7 +18,7 @@ import locale
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from holiday_regions import add_holiday_regions
+import nl_regions
 import scipy.signal
 import scipy.interpolate
 import scipy.integrate
@@ -55,30 +55,6 @@ DFS = {}
 
 
 
-def load_municipality_data():
-    """Return municipality dataframe; index=municipality, column: 'Inwoners'"""
-
-    path = DATA_PATH / 'Regionale_kerncijfers_Nederland_15082020_130832.csv'
-
-    df_mun = pd.read_csv(path, sep=';')
-    df_mun.rename(columns={
-     #'Perioden',
-     #"Regio's",
-     'Bevolking/Bevolkingssamenstelling op 1 januari/Totale bevolking (aantal)': 'total',
-     'Bevolking/Bevolkingssamenstelling op 1 januari/Burgerlijke staat/Bevolking 15 jaar of ouder/Inwoners 15 jaar of ouder (aantal)': 'n15plus',
-     'Bevolking/Bevolkingssamenstelling op 1 januari/Burgerlijke staat/Bevolking 15 jaar of ouder/Gehuwd (in % van  inwoners 15 jaar of ouder)': 'n15gehuwd',
-     'Bevolking/Bevolkingssamenstelling op 1 januari/Bevolkingsdichtheid (aantal inwoners per km²)': 'dichtheid',
-     'Bouwen en wonen/Woningvoorraad/Voorraad op 1 januari (aantal)': 'woningen',
-     'Milieu en bodemgebruik/Bodemgebruik/Oppervlakte/Totale oppervlakte (km²)': 'opp'
-     }, inplace=True)
-
-    df_mun = pd.DataFrame({'Municipality': df_mun['Regio\'s'], 'Inwoners': df_mun['total']})
-    df_mun.set_index('Municipality', inplace=True)
-    df_mun = df_mun.loc[~df_mun.Inwoners.isna()]
-    import re
-    df_mun.rename(index=lambda x: re.sub(r' \(gemeente\)$', '', x), inplace=True)
-    return df_mun
-
 
 def load_restrictions():
     """Return restrictions DataFrame; index=DateTime, column=Description."""
@@ -113,7 +89,7 @@ def download_Rt_rivm_coronawatchNL(maxage='16 days 15 hours',  force=False):
         last_time = pd.to_datetime(df['Datum'].iloc[-1])
         now_time = pd.to_datetime('now')
         if not (force or now_time >= last_time + pd.Timedelta(maxage)):
-            print('Not updating RIVM Rt data; seems recent enough')
+            print('Not updating RIVM Rt data; seems recent enough.')
             return
         local_file_data = fpath.read_bytes()
     else:
@@ -132,7 +108,7 @@ def download_Rt_rivm_coronawatchNL(maxage='16 days 15 hours',  force=False):
 
 
 
-def download_Rt_rivm(maxage='16 days 15 hours',  force=False):
+def download_Rt_rivm(maxage='11 days 15 hours',  force=False):
     """Download reproduction number from RIVM if new version is available.
 
     Parameters:
@@ -140,12 +116,12 @@ def download_Rt_rivm(maxage='16 days 15 hours',  force=False):
     - maxage: maximum time difference between last datapoint and present time.
     - force: whether to download without checking the date.
 
-    Usually, data is published on Tue 14:30 covering data up to Sunday the
-    week before, so the data will be stale after 16 days 14:30 h.
+    Usually, data is published on Tue 14:30 covering data up to the Friday
+    before. The data will be stale after 11 days 14:30 h.
 
     For history purposes, files will be saved as
     'rivm_reproductiegetal.csv' (latest)
-    'rivm_reproductiegetal-yyyymmdd.csv' (by most recent date in the data file).
+    'rivm_reproductiegetal-yyyy-mm-dd.csv' (by most recent date in the data file).
     """
 
 
@@ -157,7 +133,7 @@ def download_Rt_rivm(maxage='16 days 15 hours',  force=False):
         df = pd.read_csv(fpath)
         last_time = pd.to_datetime(df['Date'].iloc[-1])
         now_time = pd.to_datetime('now')
-        if not (force or now_time >= last_time + pd.Timedelta(maxage)):
+        if not (force or now_time >= last_time + pd.Timedelta(maxage, 'd')):
             print('Not updating RIVM Rt data; seems recent enough')
             return
         local_file_data = fpath.read_bytes()
@@ -287,11 +263,104 @@ def load_cumulative_cases(autoupdate=True):
     # 2020-11-08: 5807 5651 5703 5664
     # 2020-11-06: 7638 7206 7272 7242
     df = df.loc[~df.Municipality_code.isna()] # Remove NA records.
-    df = add_holiday_regions(df)
     df['Date_of_report'] = pd.to_datetime(df['Date_of_report'])
 
     return df
 
+
+def get_municipalities_by_pop(minpop, maxpop, sort='size'):
+    """Return list of municipalities with populations in specified range.
+
+    sort by 'size' or 'alpha'.
+    """
+
+    df = DFS['mun']
+    pops = df['Population']
+    df = df.loc[(pops >= minpop) & (pops < maxpop)]
+
+    if sort == 'alpha':
+        return sorted(df.index)
+
+    if sort == 'size':
+        return list(df.sort_values(by='Population', ascending=False).index)
+
+    raise ValueError(f'sort={sort!r}')
+
+def get_region_data(region, lastday=-1, printrows=0, correct_anomalies=True):
+    """Get case counts and population for one municipality.
+
+    It uses the global DFS['mun'], DFS['cases'] dataframe.
+
+    Parameters:
+
+    - region: region name (see below)
+    - lastday: last day to include.
+    - printrows: print this many of the most recent rows
+    - correct_anomalies: correct known anomalies (hiccups in reporting)
+      by reassigning cases to earlier dates.
+
+    Special municipalities:
+
+    - 'Nederland': all
+    - 'HR:Zuid', 'HR:Noord', 'HR:Midden', 'HR:Midden+Zuid': holiday regions.
+    - 'MS:xx-yy': municipalities with population xx <= pop/1000 < yy'
+    - 'P:xx': province
+
+    Use data up to lastday.
+
+    Return:
+
+    - df: dataframe with added columns:
+
+        - Delta: daily increase in case count (per capita).
+        - Delta7r: daily increase as 7-day rolling average
+          (last 3 days are estimated).
+        - DeltaSG: daily increase, smoothed with (15, 2) Savitsky-Golay filter.Region selec
+    - pop: population.
+    """
+
+    df1, npop = nl_regions.select_cases_region(DFS['cases'], region)
+
+    # df1 will have index 'Date_of_report', columns:
+    # 'Total_reported', 'Hospital_admission', 'Deceased'
+
+    if lastday < -1 or lastday > 0:
+        df1 = df1.iloc[:lastday+1]
+
+    if len(df1) == 0:
+        raise ValueError(f'No data for region={region!r}.')
+
+    # nc: number of cases
+    nc = df1['Total_reported'].diff()
+    if printrows > 0:
+        print(nc[-printrows:])
+
+    nc.iat[0] = 0
+    df1['Delta'] = nc/npop
+    if correct_anomalies:
+        _correct_delta_anomalies(df1)
+        nc = df1['Delta'] * npop
+
+    nc7 = nc.rolling(7, center=True).mean()
+    nc7[np.abs(nc7) < 1e-10] = 0.0 # otherwise +/-1e-15 issues.
+    nc7a = nc7.to_numpy()
+
+    # last 3 elements are NaN, use mean of last 4 raw entries to
+    # get an estimated trend and use exponential growth or decay
+    # for filling the data.
+
+    nc1 = nc.iloc[-4:].mean() # mean number at t=-1.5 days
+    log_slope = (np.log(nc1) - np.log(nc7a[-4]))/1.5
+    nc7.iloc[-3:] = nc7a[-4] * np.exp(np.arange(1, 4)*log_slope)
+
+    # 1st 3 elements are NaN
+    nc7.iloc[:3] = np.linspace(0, nc7.iloc[3], 3, endpoint=False)
+
+    df1['Delta7r'] = nc7/npop
+    df1['DeltaSG'] = scipy.signal.savgol_filter(
+        nc/npop, 15, 2, mode='interp')
+
+    return df1, npop
 
 def _correct_delta_anomalies(df):
     """Apply anomaly correction to 'Delta' column.
@@ -317,86 +386,6 @@ def _correct_delta_anomalies(df):
 
     assert np.isclose(df["Delta"].sum(), df["Delta_orig"].sum(), rtol=1e-6, atol=0)
 
-
-def get_mun_data(mun, n_inw, lastday=-1, printrows=0, correct_anomalies=True):
-    """Return dataframe with case counts for one municipality, with added columns.
-
-    It uses the global DFS['mun'], DFS['cases'] dataframe.
-
-    Parameters:
-
-    - mun: municipality name.
-    - n_inw: minimum population
-    - printrows: print this many of the most recent rows
-    - correct_anomalies: correct known anomalies (hiccups in reporting)
-      by reassigning cases to earlier dates.
-
-    Special municipalities:
-
-    - 'Nederland': all
-    - 'HR:Zuid', 'HR:Noord', 'HR:Midden', 'HR:Midden+Zuid': holiday regions.
-    - 'P:xx': province
-
-    Use data up to lastday.
-
-    Return: dataframe with added columns:
-
-    - Delta: daily increase in case count.
-    - Delta7r: daily increase as 7-day rolling average
-      (last 3 days are estimated).
-    - DeltaSG: daily increase, smoothed with (15, 2) Savitsky-Golay filter.
-    """
-
-    df = DFS['cases']
-
-    if mun == 'Nederland':
-        df1 = df.groupby('Date_of_report').sum()
-    elif mun == 'HR:Midden+Zuid':
-        df1 = df.loc[df['HolRegion'].str.match('Midden|Zuid')].groupby('Date_of_report').sum()
-    elif mun.startswith('HR:'):
-        df1 = df.loc[df['HolRegion'] == mun[3:]].groupby('Date_of_report').sum()
-    elif mun.startswith('P:'):
-        df1 = df.loc[df['Province'] == mun[2:]].groupby('Date_of_report').sum()
-    else:
-        df1 = df.loc[df.Municipality_name == mun].copy()
-        df1.set_index('Date_of_report', inplace=True)
-
-    if lastday < -1 or lastday > 0:
-        df1 = df1.iloc[:lastday+1]
-
-    if len(df1) == 0:
-        raise ValueError(f'No data for mun={mun!r}.')
-
-    # nc: number of cases
-    nc = df1['Total_reported'].diff()
-    if printrows > 0:
-        print(nc[-printrows:])
-
-
-    nc.iat[0] = 0
-    df1['Delta'] = nc/n_inw
-    if correct_anomalies:
-        _correct_delta_anomalies(df1)
-        nc = df1['Delta'] * n_inw
-
-    nc7 = nc.rolling(7, center=True).mean()
-    nc7a = nc7.to_numpy()
-    # last 3 elements are NaN, use mean of last 4 raw entries to
-    # get an estimated trend and use exponential growth or decay
-    # for filling the data.
-
-    nc1 = nc.iloc[-4:].mean() # mean number at t=-1.5 days
-    log_slope = (np.log(nc1) - np.log(nc7a[-4]))/1.5
-    nc7.iloc[-3:] = nc7a[-4] * np.exp(np.arange(1, 4)*log_slope)
-
-    # 1st 3 elements are NaN
-    nc7.iloc[:3] = np.linspace(0, nc7.iloc[3], 3, endpoint=False)
-
-    df1['Delta7r'] = nc7/n_inw
-    df1['DeltaSG'] = scipy.signal.savgol_filter(
-        nc/n_inw, 15, 2, mode='interp')
-
-    return df1
 
 
 def construct_Dfunc(delays, plot=False):
@@ -574,18 +563,32 @@ def add_labels(ax, labels, xpos, mindist_scale=1.0, logscale=True):
     new_Ys = fmin_cobyla(func, Ys, cons, catol=mindist*0.05)
 
     for Y, (_, txt) in zip(new_Ys, labels):
-        y = 10**Y if logscale else Y
+        y = 10**Y if logscale else Y1
         ax.text(xpos, y, txt, verticalalignment='center')
 
 
-def plot_daily_trends(minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None, source='r7'):
+def _zero2nan(s):
+    """Return copy of array/series s, negative/zeros replaced by NaN."""
+
+    sc = s.copy()
+    sc[s <= 0] = np.nan
+    return sc
+
+
+
+def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
+                      source='r7'):
     """Plot daily-case trends (pull data from global DFS dict).
 
     - minpop: minimum city population
     - lastday: up to this day.
     - source: 'r7' (7-day rolling average), 'raw' (no smoothing), 'sg'
       (Savitsky-Golay smoothed).
-    - df_restrictions: Dataframe with restriction texts.
+    - mun_regexp: regular expression matching municipalities.
+    - region_list: list of municipalities (including e.g. 'HR:Zuid',
+      'POP:100-200').
+      if mun_regexp and mun_list are both specified, then concatenate.
+      If neither are specified, assume 'Nederland'.
     """
 
     df_restrictions = DFS['restrictions']
@@ -594,32 +597,36 @@ def plot_daily_trends(minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None, sourc
     fig, ax = plt.subplots(figsize=(12, 6))
     fig.subplots_adjust(top=0.945, bottom=0.085, left=0.09, right=0.83)
 
-    # dict: municitpality -> population
-    muns = df_mun.loc[df_mun['Inwoners'] > minpop]['Inwoners'].to_dict()
-    muns['Nederland'] = float(df_mun.sum())
+
+    if region_list is None:
+        region_list = []
+
+    if mun_regexp:
+        region_list = [m for m in df_mun.index if re.match(mun_regexp, m)] + region_list
+
+    if region_list == []:
+        region_list = ['Nederland']
 
     labels = [] # tuples (y, txt)f
     citystats = [] # tuples (Rt, T2, cp100k, cwk, popk, city_name)
-    for mun, n_inw in muns.items():
-
-        if mun_regexp and not re.match(mun_regexp, mun):
-            continue
-
-        df1 = get_mun_data(mun, n_inw, lastday=lastday)
+    for region in region_list:
+        df1, n_inw = get_region_data(region, lastday=lastday)
         df1 = df1.iloc[-ndays:]
-
         fmt = 'o-' if ndays < 70 else '-'
         psize = 5 if ndays < 30 else 3
 
         dnc_column = dict(r7='Delta7r', raw='Delta', sg='DeltaSG')[source]
-        ax.semilogy(df1[dnc_column]*1e5, fmt, label=mun, markersize=psize)
+
+        reg_label = re.sub(r'POP:(.*)-(.*)', r'\1k-\2k inw.', region)
+        reg_label = re.sub(r'^[A-Z]+:', '', reg_label)
+        ax.semilogy(df1[dnc_column]*1e5, fmt, label=reg_label, markersize=psize)
         delta_t = 7
         i0 = dict(raw=-1, r7=-3, sg=-3)[source]
         t_double, Rt = get_t2_Rt(df1[dnc_column], delta_t, i0=i0)
         citystats.append((np.around(Rt, 2), np.around(t_double, 2),
                           np.around(df1['Delta'][-1]*1e5, 2),
                           int(df1['Delta7r'][-4] * n_inw * 7 + 0.5),
-                          int(n_inw/1e3 + .5), mun))
+                          int(n_inw/1e3 + .5), region))
 
         if abs(t_double) > 60:
             texp = f'Stabiel'
@@ -632,7 +639,7 @@ def plot_daily_trends(minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None, sourc
             df1.index[[i0-delta_t, i0]], df1[dnc_column].iloc[[i0-delta_t, i0]]*1e5,
             'k--', zorder=-10)
 
-        labels.append((df1[dnc_column][-1]*1e5, f' {mun} ({texp})'))
+        labels.append((df1[dnc_column][-1]*1e5, f' {reg_label} ({texp})'))
 
 
     y_lab = ax.get_ylim()[0]
@@ -685,7 +692,7 @@ def plot_daily_trends(minpop=2e+5, ndays=100, lastday=-1, mun_regexp=None, sourc
 def plot_anomalies_deltas(ndays=120):
     """Show effect of anomaly correction."""
 
-    df = get_mun_data('Nederland', 10e6, correct_anomalies=True)
+    df, _npop = get_region_data('Nederland', correct_anomalies=True)
     fig, ax = plt.subplots(tight_layout=True, figsize=(8, 5))
 
     col_labs = [('Delta_orig', 'Raw'), ('Delta', 'Anomalies corrected')]
@@ -730,7 +737,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
 
     for region in regions:
 
-        df1 = get_mun_data(region, 1e9, lastday=lastday, correct_anomalies=correct_anomalies)
+        df1, _npop = get_region_data(region, lastday=lastday, correct_anomalies=correct_anomalies)
         source_col = dict(r7='Delta7r', sg='DeltaSG')[source]
 
         # skip the first 10 days because of zeros
@@ -739,7 +746,10 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
         fmt = 'o-' if ndays < 70 else '-'
         psize = 5 if ndays < 30 else 3
 
-        label = re.sub('^[A-Z]+:', '', region)
+        if region.startswith('POP:'):
+            label = region[4:] + ' k inw.'
+        else:
+            label = re.sub('^[A-Z]+:', '', region)
         ax.plot(Rt, fmt, label=label, markersize=psize)
 
         labels.append((Rt[-1], f' {label}'))
@@ -800,7 +810,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
             verticalAlignment='top', horizontalAlignment='right',
             rotation=90)
 
-    ax.legend(loc='upper center')
+    ax.legend() # (loc='upper center')
     for tl in ax.get_xticklabels():
         tl.set_ha('left')
 
@@ -856,8 +866,8 @@ def init_data(autoupdate=True, Rt_source='rivm'):
     - Rt_source: 'rivm' or 'coronawatchnl' (where to download Rt data).
     """
 
-    DFS['mun'] = load_municipality_data()
     DFS['cases'] = df = load_cumulative_cases(autoupdate=autoupdate)
+    DFS['mun'] = nl_regions.get_municipality_data()
     DFS['Rt_rivm'] = load_Rt_rivm(autoupdate=autoupdate, source=Rt_source)
     DFS['restrictions'] = load_restrictions()
     dfa = pd.read_csv('data/daily_numbers_anomalies.csv', comment='#')
@@ -865,7 +875,7 @@ def init_data(autoupdate=True, Rt_source='rivm'):
     DFS['anomalies'] = dfa.set_index('Date_report')
 
     print(f'Case data most recent date: {df["Date_of_report"].iat[-1]}')
-    get_mun_data('Nederland', 5e6, printrows=5)
+    # get_mun_data('Nederland', 5e6, printrows=5)
 
 
 

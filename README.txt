@@ -18,7 +18,10 @@ Here are the Python files:
   casus_analysis.py - module for parsing/analyzing NL casus data.
   chen_airborne_exposure_plot.py - analysis of data on droplet range.
   holiday_regions.py - mapping municipalities to school-holiday regions
-  nlcovidstats.py - download and plot daily number of positives.
+  nl_regions.py - module with functions for handling municipalities/regions.
+  nlcovidstats.py - module with functions to process the positives.
+  nlcovidstats_show.py - script to generate plots.
+  plot_R_from_daily_cases.py - another script, just plot R number.
   process_casus_data.py - script demonstrating casus analysis.
   run_seirmodel.py - script demonstrating the SEIR model.
   seirmodel.py - SEIR epidimiological model (not maintained).
@@ -27,10 +30,12 @@ Here are the Python files:
 
 To install pandas in Linux:
   pip3 install pandas scipy matplotlib
-  
-If you encounter "locale.Error: unsupported locale setting", solve this by adding nl_NL.UTF-8 in:
+
+If you encounter "locale.Error: unsupported locale setting", solve
+this by adding nl_NL.UTF-8 in:
+
   sudo dpkg reconfigure-locales
-  
+
 In order to use casus_analysis/process_casus_data, you need to
 download the archive of casus data. In Linux:
 
