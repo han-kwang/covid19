@@ -15,6 +15,7 @@ import urllib.request
 from pathlib import Path
 import time
 import locale
+import json
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -577,25 +578,34 @@ def _zero2nan(s):
 
 
 def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
-                      source='r7'):
+                      source='r7', subtitle=None):
     """Plot daily-case trends (pull data from global DFS dict).
 
-    - minpop: minimum city population
     - lastday: up to this day.
     - source: 'r7' (7-day rolling average), 'raw' (no smoothing), 'sg'
       (Savitsky-Golay smoothed).
     - mun_regexp: regular expression matching municipalities.
     - region_list: list of municipalities (including e.g. 'HR:Zuid',
-      'POP:100-200').
+      'POP:100-200', 'JSON:{...}'.
       if mun_regexp and mun_list are both specified, then concatenate.
       If neither are specified, assume 'Nederland'.
+
+      JSON is a json-encoded dict with:
+
+      - 'label': short label string
+      - 'color': for plotting, optional.
+      - 'fmt': format for plotting, e.g. 'o--', optional.
+      - 'muns': list of municipality names
+
+    - subtitle: second title line (optional)
     """
 
     df_restrictions = DFS['restrictions']
     df_mun = DFS['mun']
 
     fig, ax = plt.subplots(figsize=(12, 6))
-    fig.subplots_adjust(top=0.945, bottom=0.085, left=0.09, right=0.83)
+    fig.subplots_adjust(top=0.945-0.03*(subtitle is not None),
+                        bottom=0.085, left=0.09, right=0.83)
 
 
     if region_list is None:
@@ -617,16 +627,25 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
 
         dnc_column = dict(r7='Delta7r', raw='Delta', sg='DeltaSG')[source]
 
-        reg_label = re.sub(r'POP:(.*)-(.*)', r'\1k-\2k inw.', region)
-        reg_label = re.sub(r'^[A-Z]+:', '', reg_label)
-        ax.semilogy(df1[dnc_column]*1e5, fmt, label=reg_label, markersize=psize)
+        if region.startswith('JSON:'):
+            reg_dict = json.loads(region[5:])
+            reg_label = reg_dict['label']
+            if 'fmt' in reg_dict:
+                fmt = reg_dict['fmt']
+            color = reg_dict['color'] if 'color' in reg_dict else None
+        else:
+            reg_label = re.sub(r'POP:(.*)-(.*)', r'\1k-\2k inw.', region)
+            reg_label = re.sub(r'^[A-Z]+:', '', reg_label)
+            color = None
+
+        ax.semilogy(df1[dnc_column]*1e5, fmt, color=color, label=reg_label, markersize=psize)
         delta_t = 7
         i0 = dict(raw=-1, r7=-3, sg=-3)[source]
         t_double, Rt = get_t2_Rt(df1[dnc_column], delta_t, i0=i0)
         citystats.append((np.around(Rt, 2), np.around(t_double, 2),
                           np.around(df1['Delta'][-1]*1e5, 2),
                           int(df1['Delta7r'][-4] * n_inw * 7 + 0.5),
-                          int(n_inw/1e3 + .5), region))
+                          int(n_inw/1e3 + .5), reg_label))
 
         if abs(t_double) > 60:
             texp = f'Stabiel'
@@ -646,13 +665,13 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
 
     if df_restrictions is not None:
         for res_t, res_d in df_restrictions['Description'].iteritems():
-            #    if res_t >= t_min:
+            if res_t >= df1.index[0]:
                 ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
 
 
     dfc = pd.DataFrame.from_records(
-        sorted(citystats), columns=['Rt', 'T2', 'C/100k', 'C/wk', 'Pop/k', 'Gemeente'])
-    dfc.set_index('Gemeente', inplace=True)
+        sorted(citystats), columns=['Rt', 'T2', 'C/100k', 'C/wk', 'Pop/k', 'Region'])
+    dfc.set_index('Region', inplace=True)
     print(dfc)
 
 
@@ -665,11 +684,11 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
     if source == 'r7':
         ax.axvline(df1.index[-4], color='gray')
         # ax.text(df1.index[-4], 0.3, '3 dagen geleden - extrapolatie', rotation=90)
-        ax.set_title('7-daags voortschrijdend gemiddelde; laatste 3 dagen zijn een schatting')
+        title = '7-daags voortschrijdend gemiddelde; laatste 3 dagen zijn een schatting'
     elif source == 'sg':
         ax.axvline(df1.index[-8], color='gray')
         # ax.text(df1.index[-4], 0.3, '3 dagen geleden - extrapolatie', rotation=90)
-        ax.set_title('Gefilterde data; laatste 7 dagen zijn minder nauwkeurig')
+        title = 'Gefilterde data; laatste 7 dagen zijn minder nauwkeurig'
 
     ax.set_ylabel('Nieuwe gevallen per 100k per dag')
 
@@ -685,8 +704,46 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
     for tl in ax.get_xticklabels():
         tl.set_ha('left')
 
-    fig.canvas.set_window_title(f'Case trends (ndays={ndays})')
+    if subtitle:
+        title += f'\n{subtitle}'
+        win_xtitle = f', {subtitle}'
+    else:
+        win_xtitle = ''
+
+    ax.set_title(title)
+    fig.canvas.set_window_title(f'Case trends (ndays={ndays}){win_xtitle}')
     fig.show()
+
+
+def plot_cumulative_trends(ndays=100, regions=None,
+                      source='r7'):
+    """Plot cumulative trends per capita (pull data from global DFS dict).
+
+    - lastday: up to this day.
+    - source: 'r7' (7-day rolling average), 'raw' (no smoothing), 'sg'
+      (Savitsky-Golay smoothed).
+    - region_list: list of municipalities (including e.g. 'HR:Zuid',
+      'POP:100-200').
+    """
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    # fig.subplots_adjust(top=0.945, bottom=0.085, left=0.09, right=0.83)
+
+
+    for region in regions:
+        df, npop = nl_regions.select_cases_region(DFS['cases'], region)
+        df = df.iloc[-ndays:]
+        ax.semilogy(df['Total_reported'] * (1e5/npop), label=region)
+
+    ax.set_ylabel('Cumulatieve Covid-19 gevallen per 100k')
+    ax.grid(which='both')
+    for tl in ax.get_xticklabels():
+        tl.set_ha('left')
+    ax.legend()
+    fig.show()
+
+
+
 
 
 def plot_anomalies_deltas(ndays=120):

@@ -29,10 +29,12 @@ if __name__ == '__main__':
             region_list=nlcs.get_municipalities_by_pop(2e5, 9e5))
 
     if 'trends-pop' in show_plots:
+        pop_regions = ['Nederland', 'POP:200-900', 'POP:80-200', 'POP:30-80',
+                        'POP:0-30']
         nlcs.plot_daily_trends(
             ndays=90, lastday=-1,
-            region_list=['Nederland', 'POP:200-900', 'POP:80-200', 'POP:30-80',
-                        'POP:0-30'])
+            region_list=regions)
+        nlcs.plot_cumulative_trends(ndays=200, regions=regions)
 
     if 'trens-prov' in show_plots:
         regions = [

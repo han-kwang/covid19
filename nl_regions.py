@@ -12,6 +12,7 @@ Created on Sat Nov  7 16:08:51 2020  @hk_nien
 """
 from pathlib import Path
 import re
+import json
 import pandas as pd
 
 DATA_PATH = Path(__file__).parent / 'data'
@@ -174,6 +175,8 @@ def select_cases_region(dfc, region):
       - 'HR:Zuid', 'HR:Noord', 'HR:Midden', 'HR:Midden+Zuid': holiday regions.
       - 'POP:xx-yy': municipalities with population xx <= pop/1000 < yy'
       - 'P:xx': province
+      - 'JSON:{...}' json dict containing key 'muns' with a list
+        of municipalities, to be aggregrated.
 
     Return:
 
@@ -200,6 +203,9 @@ def select_cases_region(dfc, region):
         pop_lo, pop_hi = float(ma.group(1)), float(ma.group(2))
         mask = (df_mun['Population'] >= pop_lo*1e3) & (df_mun['Population'] < pop_hi*1e3)
         mselect = df_mun.loc[mask]
+    elif region.startswith('JSON:'):
+        muns = json.loads(region[5:])['muns']
+        mselect = df_mun.loc[muns]
     else:
         mselect = df_mun.loc[[region]]
 
