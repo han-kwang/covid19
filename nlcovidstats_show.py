@@ -33,8 +33,8 @@ if __name__ == '__main__':
                         'POP:0-30']
         nlcs.plot_daily_trends(
             ndays=90, lastday=-1,
-            region_list=regions)
-        nlcs.plot_cumulative_trends(ndays=200, regions=regions)
+            region_list=pop_regions)
+        nlcs.plot_cumulative_trends(ndays=200, regions=pop_regions)
 
     if 'trens-prov' in show_plots:
         regions = [

@@ -576,7 +576,6 @@ def _zero2nan(s):
     return sc
 
 
-
 def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
                       source='r7', subtitle=None):
     """Plot daily-case trends (pull data from global DFS dict).
@@ -689,6 +688,8 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
         ax.axvline(df1.index[-8], color='gray')
         # ax.text(df1.index[-4], 0.3, '3 dagen geleden - extrapolatie', rotation=90)
         title = 'Gefilterde data; laatste 7 dagen zijn minder nauwkeurig'
+    else:
+        title = 'Dagcijfers'
 
     ax.set_ylabel('Nieuwe gevallen per 100k per dag')
 
@@ -701,6 +702,7 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
     ax.yaxis.set_minor_formatter(LogFormatter(minor_thresholds=(3, 1)))
     #plt.xticks(pd.to_dateTime(['2020-0{i}-01' for i in range(1, 9)]))
     ax.legend() # loc='lower left')
+
     for tl in ax.get_xticklabels():
         tl.set_ha('left')
 

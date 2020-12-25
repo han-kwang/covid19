@@ -239,7 +239,7 @@ def plot_hhsize_relig_cases(ref_date='now', pop_range=(0, 60e3)):
         dfm_wc['Maandelijks%'] < 5.5
         ]
     annot_muns = dfm_wc.index[np.any(annot_mask, axis=0)]
-    for mun in annot_muns:
+    for mun in list(annot_muns):
         xy = dfm_wc.loc[mun, ['HHsize', 'Maandelijks%']]
         annot_kwargs = {
             'horizontalalignment': 'right' if xy[0] > 3 else 'left',
@@ -258,6 +258,7 @@ def plot_hhsize_relig_cases(ref_date='now', pop_range=(0, 60e3)):
     df_renamed.rename(columns={'HHsize': 'HHgrootte',
                                'Maandelijks%':'Religieus%',
                                'WeeklyPer100k':'CovidGevallen'}, inplace=True)
+    df_renamed['LogReligieus'] = np.log10(df_renamed['Religieus%'])
     corr = df_renamed.corr()
     print(f'Correlation matrix:\n{np.around(corr, 2)}')
 
