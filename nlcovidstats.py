@@ -109,7 +109,7 @@ def download_Rt_rivm_coronawatchNL(maxage='16 days 15 hours',  force=False):
 
 
 
-def download_Rt_rivm(maxage='11 days 15 hours',  force=False):
+def download_Rt_rivm(maxage='11 days 15:16:00',  force=False):
     """Download reproduction number from RIVM if new version is available.
 
     Parameters:
@@ -117,8 +117,8 @@ def download_Rt_rivm(maxage='11 days 15 hours',  force=False):
     - maxage: maximum time difference between last datapoint and present time.
     - force: whether to download without checking the date.
 
-    Usually, data is published on Tue 14:30 covering data up to the Friday
-    before. The data will be stale after 11 days 14:30 h.
+    Usually, data is published on Tue 15:15 covering data up to the Friday
+    before. The data will be stale after 11 days 15:15 h.
 
     For history purposes, files will be saved as
     'rivm_reproductiegetal.csv' (latest)
@@ -221,12 +221,13 @@ def update_cum_cases_csv(force=False):
             tm = time.time()
             loc_time = time.localtime(tm)
             day_seconds = loc_time[3]*3600 + loc_time[4]*60 + loc_time[5]
-            tm_latest = tm - day_seconds + 14*3600
+            # RIVM releases data at 15:15.
+            tm_latest = tm - day_seconds + 15.25*3600
             if tm_latest > tm:
                 tm_latest -= 86400
 
             tm_file = fpath.stat().st_mtime
-            if tm_file > tm_latest + 1800: # after 14:30
+            if tm_file > tm_latest + 60: # after 15:15
                 print('Not updating cumulative case file; seems to be recent enough.')
                 return
             if tm_file > tm_latest:
