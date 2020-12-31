@@ -12,16 +12,19 @@ import nlcovidstats as nlcs
 
 if __name__ == '__main__':
     # Which plots to show.
-    show_plots = 'Rtosc,trends,trends-pop,trends-prov,RtD9,Rt,RtRegion,delay,anomalies'.split(',')
+    show_plots = 'Rtosc,trends,trends-pop,trends-prov,RtD9,Rt,RtRegion,delay,anomalies,dowcorr'.split(',')
 
     # Uncomment and change line below to do a selection of plots rather than
     # all of them.
-    #show_plots = 'RtRegion'.split(',')
+    # show_plots = 'Rt,dowcorr'.split(',')
     nlcs.reset_plots()
     nlcs.init_data(autoupdate=True)
 
     if 'Rtosc' in show_plots:
         nlcs.plot_Rt_oscillation()
+
+    if 'dowcorr' in show_plots:
+        nlcs.get_dow_correction((-50, -1), verbose=True)
 
     if 'trends' in show_plots:
         nlcs.plot_daily_trends(

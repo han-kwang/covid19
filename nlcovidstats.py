@@ -288,7 +288,76 @@ def get_municipalities_by_pop(minpop, maxpop, sort='size'):
 
     raise ValueError(f'sort={sort!r}')
 
-def get_region_data(region, lastday=-1, printrows=0, correct_anomalies=True):
+
+_DOW_CORR_CACHE = {} # keys: dayrange tuples.
+
+def get_dow_correction(dayrange=(-50, -1), verbose=False):
+    """Return array with day-of-week correction factors.
+
+    - dayrange: days to consider for DoW correction.
+    - verbose: whether to show plots and print diagnostics.
+
+    Return:
+
+    - dow_corr_factor: array (7,) with DoW correction (0=Monday).
+    """
+
+    dayrange = tuple(dayrange)
+    if dayrange in _DOW_CORR_CACHE:
+        return _DOW_CORR_CACHE[dayrange].copy()
+
+    # timestamp index, columns Delta, Delta7r, and others.
+    df, _ = get_region_data('Nederland', lastday=dayrange[-1], correct_dow=None)
+    df = df.iloc[:-4] # Discard the last rows that have no correct rolling average.
+    df = df.iloc[dayrange[0]:]
+
+    # Correction factor - 1
+    df['Delta_factor'] = df['Delta']/df['Delta7r']
+
+    # Collect by day of week (0=Monday)
+    factor_by_dow = np.zeros(7)
+    for i in range(7):
+        factor_by_dow[i] = 1 / df.loc[df.index.dayofweek == i, 'Delta_factor'].mean()
+    factor_by_dow /= factor_by_dow.mean()
+
+
+    df['Delta_est_factor'] = factor_by_dow[df.index.dayofweek]
+    df['Delta_corrected'] = df['Delta'] * df['Delta_est_factor']
+
+    rms_dc = (df['Delta_corrected']/df['Delta7r']).std()
+    rms_d = df['Delta_factor'].std()
+
+    if verbose:
+        print('DoW effect: deviations from 7-day rolling average.\n'
+              f'  Original: RMS={rms_d:.3g}; after correction: RMS={rms_dc:.3g}')
+
+        fig, ax = plt.subplots(tight_layout=True)
+
+        ax.plot(df['Delta_factor'], label='Delta')
+        ax.plot(df['Delta_corrected'] / df['Delta7r'], label='Delta_corrected')
+        ax.plot(df['Delta_est_factor'], label='Correction factor')
+
+        tools.set_xaxis_dateformat(ax, 'Date')
+        ax.legend()
+        ax.set_ylabel('Daily cases deviation')
+
+        title = 'Day-of-week correction on daily cases'
+        ax.set_title(title)
+        fig.canvas.set_window_title(title)
+        fig.show()
+
+    if rms_dc > 0.8*rms_d:
+        print('WARNING: DoW correction for dayrange={dayrange} does not seem to work.\n'
+              '  Abandoning this correction.')
+
+        factor_by_dow = np.ones(7)
+
+    _DOW_CORR_CACHE[dayrange] = factor_by_dow.copy()
+    return factor_by_dow
+
+
+def get_region_data(region, lastday=-1, printrows=0, correct_anomalies=True,
+                    correct_dow='r7'):
     """Get case counts and population for one municipality.
 
     It uses the global DFS['mun'], DFS['cases'] dataframe.
@@ -300,6 +369,7 @@ def get_region_data(region, lastday=-1, printrows=0, correct_anomalies=True):
     - printrows: print this many of the most recent rows
     - correct_anomalies: correct known anomalies (hiccups in reporting)
       by reassigning cases to earlier dates.
+    - correct_dow: None, 'r7' (only for extrapolated rolling-7 average)
 
     Special municipalities:
 
@@ -326,6 +396,7 @@ def get_region_data(region, lastday=-1, printrows=0, correct_anomalies=True):
     # df1 will have index 'Date_of_report', columns:
     # 'Total_reported', 'Hospital_admission', 'Deceased'
 
+    assert correct_dow in [None, 'r7']
     if lastday < -1 or lastday > 0:
         df1 = df1.iloc[:lastday+1]
 
@@ -343,15 +414,22 @@ def get_region_data(region, lastday=-1, printrows=0, correct_anomalies=True):
         _correct_delta_anomalies(df1)
         nc = df1['Delta'] * npop
 
+
+
     nc7 = nc.rolling(7, center=True).mean()
     nc7[np.abs(nc7) < 1e-10] = 0.0 # otherwise +/-1e-15 issues.
     nc7a = nc7.to_numpy()
 
-    # last 3 elements are NaN, use mean of last 4 raw entries to
+    # last 3 elements are NaN, use mean of last 4 raw (dow-corrected) to
     # get an estimated trend and use exponential growth or decay
     # for filling the data.
+    if correct_dow == 'r7':
+        dow_correction = get_dow_correction((lastday-49, lastday))
+        # mean number at t=-1.5 days
+        nc1 = np.mean(nc.iloc[-4:] * dow_correction[nc.index[-4:].dayofweek])
+    else:
+        nc1 = nc.iloc[-4:].mean() # mean number at t=-1.5 days
 
-    nc1 = nc.iloc[-4:].mean() # mean number at t=-1.5 days
     log_slope = (np.log(nc1) - np.log(nc7a[-4]))/1.5
     nc7.iloc[-3:] = nc7a[-4] * np.exp(np.arange(1, 4)*log_slope)
 
@@ -447,12 +525,8 @@ def construct_Dfunc(delays, plot=False):
             int(pd.to_datetime('now').to_datetime64())
             )
         ax.plot(pd.to_datetime(tsx.astype(int)), fD(tsx))
-        plt.xticks(rotation=-20)
-        ax.set_xlabel('Rapportagedatum')
         ax.set_ylabel('Vertraging (dagen)')
-        for tl in ax.get_xticklabels():
-            tl.set_ha('left')
-        ax.grid()
+        tools.set_xaxis_dateformat(ax, 'Rapportagedatum')
         fig.canvas.set_window_title('Vertraging infectiedatum - rapportage')
         fig.show()
 
@@ -460,7 +534,7 @@ def construct_Dfunc(delays, plot=False):
 
 
 def estimate_Rt_series(r, delay=9, Tc=4.0):
-    """Return Rt data, assuming delay infection-reporting.q
+    """Return Rt data, assuming delay infection-reporting.
 
     - r: Series with smoothed new reported cases.
       (e.g. 7-day rolling average or other smoothed data).
@@ -605,7 +679,7 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
 
     fig, ax = plt.subplots(figsize=(12, 6))
     fig.subplots_adjust(top=0.945-0.03*(subtitle is not None),
-                        bottom=0.085, left=0.09, right=0.83)
+                        bottom=0.1, left=0.09, right=0.83)
 
 
     if region_list is None:
@@ -678,9 +752,6 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
     lab_x = df1.index[-1] + pd.Timedelta('1.2 d')
     add_labels(ax, labels, lab_x)
 
-
-    ax.grid(which='both')
-
     if source == 'r7':
         ax.axvline(df1.index[-4], color='gray')
         # ax.text(df1.index[-4], 0.3, '3 dagen geleden - extrapolatie', rotation=90)
@@ -704,8 +775,7 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
     #plt.xticks(pd.to_dateTime(['2020-0{i}-01' for i in range(1, 9)]))
     ax.legend() # loc='lower left')
 
-    for tl in ax.get_xticklabels():
-        tl.set_ha('left')
+    tools.set_xaxis_dateformat(ax)
 
     if subtitle:
         title += f'\n{subtitle}'
@@ -739,13 +809,9 @@ def plot_cumulative_trends(ndays=100, regions=None,
         ax.semilogy(df['Total_reported'] * (1e5/npop), label=region)
 
     ax.set_ylabel('Cumulatieve Covid-19 gevallen per 100k')
-    ax.grid(which='both')
-    for tl in ax.get_xticklabels():
-        tl.set_ha('left')
+    tools.set_xaxis_dateformat(ax)
     ax.legend()
     fig.show()
-
-
 
 
 
@@ -759,7 +825,7 @@ def plot_anomalies_deltas(ndays=120):
     for col, lab in col_labs:
         ax.semilogy(df.iloc[-ndays:][col], label=lab)
     ax.legend()
-    ax.grid()
+    tools.set_xaxis_dateformat(ax, maxticks=7)
     title = 'Anomaly correction'
     ax.set_title(title)
     fig.canvas.set_window_title(title)
@@ -777,7 +843,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
       The timestamps refer to the date of report. See doc of estimeate_Rt_series.
     - source: 'r7' or 'sg' for rolling 7-day average or Savitsky-Golay-
       filtered data.
-    - Tc: generation interval time
+    - Tc: generation interval timepd.to_datetime(matplotlib.dates.num2date(ax.get_xlim()))
     - regions: comma-separated string (or list of str);
       'Nederland', 'V:xx' (holiday region), 'P:xx' (province), 'M:xx'
       (municipality).
@@ -787,7 +853,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
     Rt_rivm = DFS['Rt_rivm']
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    fig.subplots_adjust(top=0.90, bottom=0.085, left=0.09, right=0.92)
+    fig.subplots_adjust(top=0.90, bottom=0.1, left=0.09, right=0.92)
     plt.xticks(rotation=-20)
     # dict: municitpality -> population
 
@@ -837,7 +903,6 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
     y_lab = ax.get_ylim()[0]
 
     # add_labels(ax, labels, lab_x)
-    ax.grid(which='both')
     ax.axvline(Rt.index[-iex-1], color='gray')
     ax.axhline(1, color='k', linestyle='--')
     ax.text(Rt.index[-4], ax.get_ylim()[1], Rt.index[-4].strftime("%d %b "),
@@ -871,8 +936,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
             rotation=90)
 
     ax.legend() # (loc='upper center')
-    for tl in ax.get_xticklabels():
-        tl.set_ha('left')
+    tools.set_xaxis_dateformat(ax, maxticks=10)
 
     fig.canvas.set_window_title(f'Rt ({", ".join(regions)[:30]}, ndays={ndays})')
     fig.show()
