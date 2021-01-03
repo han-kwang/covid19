@@ -109,22 +109,21 @@ def download_Rt_rivm_coronawatchNL(maxage='16 days 15 hours',  force=False):
 
 
 
-def download_Rt_rivm(maxage='11 days 15:16:00',  force=False):
+def download_Rt_rivm(force=False):
     """Download reproduction number from RIVM if new version is available.
 
     Parameters:
 
-    - maxage: maximum time difference between last datapoint and present time.
     - force: whether to download without checking the date.
 
     Usually, data is published on Tue 15:15 covering data up to the Friday
-    before. The data will be stale after 11 days 15:15 h.
+    before.
 
     For history purposes, files will be saved as
+
     'rivm_reproductiegetal.csv' (latest)
     'rivm_reproductiegetal-yyyy-mm-dd.csv' (by most recent date in the data file).
     """
-
 
     # get last date available locally
     fname_tpl = 'data/rivm_reproductiegetal{}.csv'
@@ -133,8 +132,12 @@ def download_Rt_rivm(maxage='11 days 15:16:00',  force=False):
     if fpath.is_file():
         df = pd.read_csv(fpath)
         last_time = pd.to_datetime(df['Date'].iloc[-1])
+        # The file was released on 1st Tuesday after the last available data.
+        # Note that this will be an hour off in case of DST change.
+        last_release_time = last_time + ((1 - last_time.dayofweek) % 7) * pd.Timedelta('1 day')
+        last_release_time += pd.Timedelta('15:15:00')
         now_time = pd.to_datetime('now')
-        if not (force or now_time >= last_time + pd.Timedelta(maxage, 'd')):
+        if not force or now_time < last_release_time + pd.Timedelta('7 days'):
             print('Not updating RIVM Rt data; seems recent enough')
             return
         local_file_data = fpath.read_bytes()

@@ -12,7 +12,23 @@ import casus_analysis as ca
 import tools
 
 def get_summary_df(maxageh=1, force_today=False):
-    """Get summary dataframe with cache handling and csv update."""
+    """Get summary dataframe with cache handling and csv update.
+
+    Dataframe layout:
+
+    Multiindex: Date_file, Date_statistics
+
+    Columns:
+
+    - DON: total 'date of notification' for this date
+    - DOO: total 'date of disease onset' for this date
+    - DPL: total 'date of positive lab result' for this date
+    - Dtot: total sum of the above three columns
+    - eDOO: estimated DOO total (by adding shifted DON, DPL data,
+      from the same file date).
+    - sDON: shifted/blurred DON number
+    - sDPL: shifted/blurred DPL number.
+    """
 
     if ca.download_rivm_casus_files(force_today=force_today):
         # If there is new data, process it.
@@ -334,6 +350,47 @@ def demo_fixed_j(df, fdate_range, ages=(5, 9, 14), stats_age=30, m=18, sdow=True
     ca._show_save_fig(fig, show, fname)
 
 
+
+def plot_doo_dpl_don(ndays=100):
+    """Plot distribution DOO DPL DON per file date."""
+
+    df = get_summary_df()
+
+    fdates = df.index.get_level_values(0).unique()[-ndays:]
+
+    # Rows will be tuples (fdate, dDOO, dDPL, dDON, DON_yesterday, DON_today).
+    rows = []
+    dcolumns = ['DOO', 'DPL', 'DON']
+    for i in range(1, len(fdates)):
+        row = [fdates[i]]
+        for col in dcolumns:
+            delta = df.loc[fdates[i], col].sum() - df.loc[fdates[i-1], col].sum()
+            row.append(delta)
+
+        row.append(df.loc[(fdates[i], fdates[i-1]), 'DON'])
+        row.append(df.loc[(fdates[i], fdates[i]), 'DON'])
+        rows.append(row)
+
+    dcolumns += ['DON_yesterday', 'DON_today']
+    dfd = pd.DataFrame(rows, columns=['Date_file'] + dcolumns)
+    dfd = dfd.set_index('Date_file')
+    dfd['Total'] = 0
+    for col in dcolumns:
+        dfd['Total'] += dfd[col]
+
+    fig, ax = plt.subplots(tight_layout=True, figsize=(10, 5))
+    lstyles = ['-', '--', '-.', ':'] * 3
+    for col, lsty in zip(dcolumns + ['Total'], lstyles):
+        ax.plot(dfd[col], label=col, linestyle=lsty)
+
+    ax.legend()
+    ax.set_ylabel('Aantal per dag')
+    tools.set_xaxis_dateformat(ax)
+    fig.show()
+
+    print(dfd)
+
+
 def plots_for_report(plots='dcm,fdc,nnc,nc10,sdow,crecom,fixj1,fixj2',
                      show=False):
     """Generate plots to include in report.
@@ -349,6 +406,8 @@ def plots_for_report(plots='dcm,fdc,nnc,nc10,sdow,crecom,fixj1,fixj2',
         - sdow: statistics DoW effect.
         - crecom: correction data recommendations.
         - fixj1, fixj2: fixed-j strategy (with/without sdow correction).
+        - doxdelay: plot DOO/DON/DPL delays per file date.
+        - repdelay: plot
     """
     df = get_summary_df()
     now = df.iloc[-1].name[0] # DateTime of most recent entry
@@ -401,6 +460,13 @@ def plots_for_report(plots='dcm,fdc,nnc,nc10,sdow,crecom,fixj1,fixj2',
             dict(fdate_range=(now-90*day, now),
                  ages=(5, 7, 9, 11, 17), stats_age=30, m=18, show=True,
                  fname='output/casus_fixj2.pdf', sdow=False)),
+        doxdelay=(
+            plot_doo_dpl_don,
+            (100,), {}
+            ),
+        repdelay= (
+            ca.get_reporting_delay, (df,), {}
+            ),
         )
 
 
@@ -416,6 +482,10 @@ def plots_for_report(plots='dcm,fdc,nnc,nc10,sdow,crecom,fixj1,fixj2',
 
 
 
+
+
+ #%%
+
 if __name__ == '__main__':
     # Note, because of multiprocessing for data loading,
     # avoid adding interactive/slow code outside the main block.
@@ -428,16 +498,19 @@ if __name__ == '__main__':
     plt.rcParams['axes.titlesize'] = plt.rcParams['xtick.labelsize']
 
 
-    ## This will create all plots (both on-screen and stored as files).
-    ## Warning: major screen clutter.
-    plots_for_report(show=True)
 
-    ## This will create all plots as files.
-    plots_for_report(show=False)
+    if True: # False during development
 
-    ## This will create and show one plot. See doc of plots_for_report.
-    plots_for_report('fixj2', show=True)
+        ## This will create all plots (both on-screen and stored as files).
+        ## Warning: major screen clutter.
+        plots_for_report(show=True)
+
+        ## This will create all plots as files.
+        # plots_for_report(show=False)
+
+        ## This will create and show one plot. See doc of plots_for_report.
+        plots_for_report('fixj2', show=True)
 
 
-    # pause (for command-line use)
-    tools.pause_commandline('Press Enter to end.')
+        # pause (for command-line use)
+        tools.pause_commandline('Press Enter to end.')

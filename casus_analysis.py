@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Module for casus analysis. Import this.
+"""Module for casus analysis. For importing.
 
 Functions:
 
@@ -22,6 +22,25 @@ Classes:
 
 - DOOCorrection: correction factors for recent daily eDOO values.
 
+Dataframes typically have subsets of these indices and columns:
+
+   Indices:
+
+   - Date_file: release date of underlying file (time 0:00 implied)
+   - Date_statistics: date corresponding to the statistics (snapshot for
+     a given Date_file)
+
+   Columns:
+
+    - DON: total 'date of notification' for this date
+    - DOO: total 'date of disease onset' for this date
+    - DPL: total 'date of positive lab result' for this date
+    - Dtot: total sum of the above three columns
+    - eDOO: estimated DOO total (by adding shifted DON, DPL data,
+      from the same file date).
+    - sDON: shifted/blurred DON number
+    - sDPL: shifted/blurred DPL number.
+
 Created on Sun Nov  8 22:44:09 2020
 
 @author: @hk_nien
@@ -31,7 +50,6 @@ import re
 import locale
 import pickle
 import time
-import sys
 from pathlib import Path
 from multiprocessing import Pool, cpu_count
 import urllib.request
@@ -41,6 +59,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 import scipy.signal
+import tools
 
 # Note: need to run this twice before NL locale takes effect.
 try:
@@ -339,7 +358,10 @@ def load_merged_summary(date_lo, date_hi):
     return dfsmerged
 
 def create_merged_summary_csv(date_lo='2020-07-01'):
-    """Load lots fo data, write to data/casus_history_summary.csv."""
+    """Load lots fo data, write to data/casus_history_summary.csv.
+
+    See load_merged_sumarray() for column layout.
+    """
 
     dfmerged = load_merged_summary(date_lo, '2099-01-01')
     fpath = CONFIG["dpath"] / 'casus_history_summary.csv'
@@ -349,8 +371,22 @@ def create_merged_summary_csv(date_lo='2020-07-01'):
 def load_merged_summary_csv(date_lo='2020-07-01', date_hi='2099-01-01'):
     """Return history summary dataframe.
 
-    Columns: Date_file, Date_statistics, DOO, DON, DPL, Dtot.
+    Dataframe layout:
+
+    Multiindex: Date_file, Date_statistics
+
+    Columns:
+
+    - DON: total 'date of notification' for this date
+    - DOO: total 'date of disease onset' for this date
+    - DPL: total 'date of positive lab result' for this date
+    - Dtot: total sum of the above three columns
+    - eDOO: estimated DOO total (by adding shifted DON, DPL data,
+      from the same file date).
+    - sDON: shifted/blurred DON number
+    - sDPL: shifted/blurred DPL number.
     """
+
     fpath = CONFIG["dpath"] / 'casus_history_summary.csv'
     df = pd.read_csv(fpath, index_col=0)
     for col in ['Date_statistics', 'Date_file']:
@@ -398,6 +434,9 @@ def _add_eDOO_to_df1(args):
 def add_eDOO_to_summary(df, delay_don=3, delay_dpl=2, blur=1):
     """Add eDOO column - estimated DOO - to summary dataframe.
 
+    Also add sDON and sDPL columns, which are estimated shifted
+    DON/DPL values (with blurring).
+
     Parameters:
 
     - delay_don: assumed delay (days) from date of notification -> day of onset.
@@ -438,8 +477,9 @@ def add_deltas_to_summary(df):
     for col in ['dDOO', 'dDON', 'dDPL', 'dDtot']:
         df[col] = 0.0
 
+    print('Getting deltas by file date', end='')
     for dtf in dtfs:
-        print(f'Processing {dtf.strftime("%Y-%m-%d")}.')
+        print('.', flush=True, end='')
         dtf_prev = dtf - pd.Timedelta(1, 'd')
         dfcurr = df.loc[(dtf,)] # dataframe with only Date_statistics as index
         dfprev = df.loc[(dtf_prev,)]
@@ -460,6 +500,7 @@ def add_deltas_to_summary(df):
         df_deltas.set_index(['Date_file', 'Date_statistics'], inplace=True)
         df.loc[(dtf,), ['dDOO', 'dDON', 'dDPL', 'dDtot']] = df_deltas
 
+    print('')
     return df
 
 
@@ -556,6 +597,15 @@ class DOOCorrection:
         self.s_dow_corr = np.array(s_dow_ce[0])
         self.s_dow_corr_err = float(s_dow_ce[1])
 
+    def __repr__(self):
+        cname = self.__class__.__name__
+        has_s_dowcorr = np.any(self.s_dow_corr != 1)
+        has_f_dowcorr = np.any(self.f_dow_corr != 1)
+        dates = [x.strftime('%Y-%m-%d') for x in self.date_range]
+        return (f'<{cname}: date_range={dates[0]}..{dates[1]},'
+                f' s_dow_corr:{has_s_dowcorr}, f_dow_corr:{has_f_dowcorr}>')
+
+
     @classmethod
     def from_doo_df(cls, df, m=18, date_range=('2020-07-01', '2099-01-01'),
                     dow=None, f_dow_corr=None, s_dow_ce=None):
@@ -567,7 +617,7 @@ class DOOCorrection:
         - date_range: (date_start, date_end) for Date_file index
         - m: number of days for estimation function
         - dow: filter by reported day of week (0=Monday, 6=Sunday), optional.
-        - f_dow_corr, None, 'auto', or file-date day-of-week correction factor matrix,
+        - f_dow_corr, None, 'auto', or file-date day-of-week correction factor matreix,
           shape (7, m).  None for no correction; 'auto' for setting the correction.
         - s_dow_ce: None, 'auto, or tuple (s_dow_corr, s_dow_corr_err);
           statistics-date DoW correction factor, shape (7,), and
@@ -996,3 +1046,102 @@ def load_data_cache(fname, maxageh=1):
         df = pickle.load(f)
         print(f'Loaded from cache: {fpath}')
         return df
+
+
+def get_reporting_delay(df, initial_delay=7, end_trunc=4, start_trunc=5, plot=True):
+
+    """Estimate delay from DOO (eDOO) to file_date.
+
+    Parameters:
+
+    - df: Dataframe with multiindex and DON, DOO, DPL, Dtot columns.
+    - initial_delay: assume initial delay (days).
+    - end_trunc: how many dates to truncate at the end
+      (recent data unreliable; but set it too high and you'll get
+       a range error)
+    - start_trunc: how many dates to truncate at the beginning
+      of the delay data.
+    - plot: whether to show plot of the data.
+
+    Return:
+
+    - delays_d: pandas Series with delays (days), Date_file as index.
+    """
+
+    # Setup refdata dataframe;d
+    # index: Date_statistics
+    # columns: ..., nDOO: estimated number of new disease onsets.
+    # Estimate is corrected for partial reporting but not for day-of-week
+    # effects. Statsitics based on most recent m=18 days.
+    fdates = np.array(sorted(df.index.get_level_values(0).unique()))
+    m = 18 # after this many days, consider reports converged.
+    fdrange = ('2020-07-01', fdates[-1])
+    doo_corr = DOOCorrection.from_doo_df(
+            df, date_range=fdrange, m=m,
+            )
+    refdata = doo_corr.create_df_nDOO(df.loc[fdates[-1]])
+    refdata.loc[refdata.index[-end_trunc:],'nDOO'] = np.nan
+    refdata = refdata.loc[~refdata['nDOO'].isna()]
+
+    # df_deltas: changes in cumulative Dtot etc. values.
+    # The columns 'Dtot' is roughly the 'daily case numbers'.
+    columns = ['DOO', 'DON', 'DPL', 'Dtot']
+    df_deltas = df[columns].groupby('Date_file').sum().diff()
+    df_deltas.iloc[0, :] = 0
+
+    # by date of disease onset
+    by_doo = refdata['nDOO'].rolling(7, center=True).mean().iloc[3:-3]
+
+    by_doo = by_doo.loc[fdates[0]-(pd.Timedelta(initial_delay-3, 'd')):]
+    cum_doo = by_doo.cumsum() - by_doo[0]
+
+    # by date of report
+    by_dor = df_deltas['Dtot'].rolling(7, center=True).mean().iloc[3:-3].copy()
+    cum_dor = by_dor.cumsum() - by_dor[0]
+
+    # Get delay by matching cumulatives
+    f_cumdoo2date = scipy.interpolate.interp1d(
+        cum_doo, cum_doo.index.astype(int), bounds_error=False,
+        fill_value=(cum_doo[0], cum_doo[-1]))
+
+    delays = pd.Series(
+        cum_dor.index - pd.to_datetime(np.around(f_cumdoo2date(cum_dor.values), -9)),
+        index=cum_dor.index
+        )
+    delays = delays.iloc[start_trunc:]
+    # delay in days
+    delays_d = np.around(delays / pd.Timedelta('1 d'), 2)
+
+    if plot:
+        fig, axs = plt.subplots(3, 1, tight_layout=True, figsize=(10, 7), sharex=True)
+
+        kwa_doo = dict(linestyle='--')
+
+        ax = axs[0]
+        ax.set_title('Aantal positieve tests (7-daags gemiddelde)')
+        ax.set_ylabel('Gevallen per dag')
+        ax.plot(by_dor, label='versus rapportagedatum')
+        ax.plot(by_doo, label='versus 1e ziektedag', **kwa_doo)
+        #    ax.set_xlim(by_doo.index[0], by_doo.index[-1])
+        ax.legend()
+
+        ax = axs[1]
+        ax.set_title('Cumulatief aantal positieve tests')
+        ax.set_ylabel('Cumulatieve gevallen')
+        ax.plot(cum_dor, label='versus rapportagedatum')
+        ax.plot(cum_doo, label='versus 1e ziektedag', **kwa_doo)
+        ax.legend()
+
+        ax = axs[2]
+        ax.set_title('Tijd tussen 1e ziektedag en rapportage (versus rapportagedatum)')
+        ax.plot(delays_d, label=None)
+        # ax.plot(delays/pd.Timedelta('1 d') + 2.5, label='Date of infection??')
+        ax.set_ylabel('Vertraging (dagen)')
+
+        for ax in axs:
+            tools.set_xaxis_dateformat(ax)
+
+        fig.canvas.set_window_title('Rapportagevertraging')
+        fig.show()
+
+    return delays_d
