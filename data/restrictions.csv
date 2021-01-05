@@ -1,19 +1,21 @@
-Date,Description
-2020-05-11,"Heropening, max 30"
-2020-06-01,Mondkapje OV
-2020-07-01,Max 100
-2020-07-04,Schoolvak. Noord
-2020-07-11,Schoolvak. Zuid
-2020-07-18,Schoolvak. Midden
-2020-08-17,Scholen open Noord
-2020-08-18,Max 6 gasten thuis
-2020-08-31,Scholen open Midden
-2020-09-20,"Randstad horeca 01u"
-2020-09-29,"Max 30/3, horeca 22u"
-2020-10-05,Mondkapjes VO
-2020-10-10,Schoolvak. Noord
-2020-10-17,Schoolvak. Mid/Zuid
-2020-10-14,Horeca dicht
-2020-11-04,Doorstroomloc. dicht
-2020-11-19,Doorstroomloc. open
-2020-12-15,Harde lockdown
+Date,Date_stop,Description
+2020-05-11,2020-07-01,"Heropening, max 30"
+2020-06-01,2099-09-09,Mondkapje OV
+2020-07-01,2020-10-14,Max 100
+2020-07-04,2020-08-17,Schoolvak. Noord
+2020-07-11,2020-08-24,Schoolvak. Zuid
+2020-07-18,2020-08-31,Schoolvak. Midden
+#2020-08-17,,Scholen open Noord
+2020-08-18,,Max 6 gasten thuis
+#2020-08-31,,Scholen open Midden
+2020-09-20,2020-09-29,"Randstad horeca 01u"
+2020-09-29,2020-10-14,"Max 30/3, horeca 22u"
+2020-10-05,2099-09-09,Mondkapjes VO
+2020-10-10,2020-10-19,Schoolvak. Noord
+2020-10-14,2099-09-09,Horeca dicht
+2020-10-17,2020-10-26,Schoolvak. Mid/Zuid
+2020-11-04,2020-11-19,Doorstroomloc. dicht
+# 2020-11-19,,Doorstroomloc. open
+2020-12-15,2021-01-19,Harde lockdown
+# 2020-12-16,2021-01-04,Scholen dicht
+

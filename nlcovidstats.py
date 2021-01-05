@@ -19,6 +19,7 @@ import json
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib
 import nl_regions
 import scipy.signal
 import scipy.interpolate
@@ -40,7 +41,8 @@ DELAY_INF2REP = [
     ('2020-09-01', 7),
     ('2020-09-15', 9),
     ('2020-10-09', 9),
-    ('2020-11-08', 7)
+    ('2020-11-08', 7),
+    ('2020-12-01', 6.5),
     ]
 
 # this will contain dataframes, initialized by init_data().
@@ -60,8 +62,9 @@ DFS = {}
 def load_restrictions():
     """Return restrictions DataFrame; index=DateTime, column=Description."""
 
-    df = pd.read_csv(DATA_PATH / 'restrictions.csv')
+    df = pd.read_csv(DATA_PATH / 'restrictions.csv', comment='#')
     df['Date'] = pd.to_datetime(df['Date']) + pd.Timedelta('12:00:00')
+    df['Date_stop'] = pd.to_datetime(df['Date_stop'])
     df.set_index('Date', inplace=True)
     return df
 
@@ -136,7 +139,7 @@ def download_Rt_rivm(force=False):
         # Note that this will be an hour off in case of DST change.
         last_release_time = last_time + ((1 - last_time.dayofweek) % 7) * pd.Timedelta('1 day')
         last_release_time += pd.Timedelta('15:15:00')
-        now_time = pd.to_datetime('now')
+        now_time = pd.to_datetime('now') + pd.Timedelta('1 h') # CET timezone (should fix this)
         if not force or now_time < last_release_time + pd.Timedelta('7 days'):
             print('Not updating RIVM Rt data; seems recent enough')
             return
@@ -642,7 +645,7 @@ def add_labels(ax, labels, xpos, mindist_scale=1.0, logscale=True):
     new_Ys = fmin_cobyla(func, Ys, cons, catol=mindist*0.05)
 
     for Y, (_, txt) in zip(new_Ys, labels):
-        y = 10**Y if logscale else Y1
+        y = 10**Y if logscale else Y
         ax.text(xpos, y, txt, verticalalignment='center')
 
 
@@ -653,6 +656,37 @@ def _zero2nan(s):
     sc[s <= 0] = np.nan
     return sc
 
+def _add_restriction_labels(ax, tmin, tmax):
+    """Add restriction labels and ribbons to axis (with date on x-axis).
+
+    - ax: axis object
+    - tmin, tmax: time range to assume for x axis.
+    """
+
+    ymin, ymax = ax.get_ylim()
+    y_lab = ymin
+    ribbon_yspan =  (ymax - ymin)*0.35
+    ribbon_hgt = ribbon_yspan/7 # ribbon height
+    ribbon_ystep = ribbon_yspan/6.4
+
+    df_restrictions = DFS['restrictions']
+    ribbon_colors = ['#ff0000', '#cc7700'] * 2
+    if df_restrictions is not None:
+        i_res = 0
+        for _, (res_t, res_t_end, res_d) in df_restrictions.reset_index().iterrows():
+            if not (tmin <= res_t <= tmax):
+                continue
+            ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
+            if pd.isna(res_t_end):
+                continue
+            res_t_end = min(res_t_end, tmax)
+            a, b = (ribbon_ystep * i_res), (ribbon_yspan - ribbon_hgt)
+            rect_y_lo = a % b + y_lab
+            color = ribbon_colors[int(a // b)]
+            rect = matplotlib.patches.Rectangle((res_t, rect_y_lo), res_t_end-res_t, ribbon_hgt,
+                                                color=color, alpha=0.15, lw=0, zorder=20)
+            ax.add_patch(rect)
+            i_res += 1
 
 def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
                       source='r7', subtitle=None):
@@ -737,13 +771,7 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
 
         labels.append((df1[dnc_column][-1]*1e5, f' {reg_label} ({texp})'))
 
-
-    y_lab = ax.get_ylim()[0]
-
-    if df_restrictions is not None:
-        for res_t, res_d in df_restrictions['Description'].iteritems():
-            if res_t >= df1.index[0]:
-                ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
+    _add_restriction_labels(ax, df1.index[0], df1.index[-1])
 
 
     dfc = pd.DataFrame.from_records(
@@ -856,15 +884,19 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
     Rt_rivm = DFS['Rt_rivm']
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    fig.subplots_adjust(top=0.90, bottom=0.1, left=0.09, right=0.92)
+    fig.subplots_adjust(top=0.90, bottom=0.11, left=0.09, right=0.92)
     plt.xticks(rotation=-20)
     # dict: municitpality -> population
+
+    # from rcParams['axes.prop_cycle']
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+              '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'] * 5
 
     labels = [] # tuples (y, txt)
     if isinstance(regions, str):
         regions = regions.split(',')
 
-    for region in regions:
+    for region, color in zip(regions, colors):
 
         df1, _npop = get_region_data(region, lastday=lastday, correct_anomalies=correct_anomalies)
         source_col = dict(r7='Delta7r', sg='DeltaSG')[source]
@@ -879,7 +911,23 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
             label = region[4:] + ' k inw.'
         else:
             label = re.sub('^[A-Z]+:', '', region)
-        ax.plot(Rt, fmt, label=label, markersize=psize)
+        ax.plot(Rt, fmt, label=label, markersize=psize, color=color)
+
+        # add confidence range (ballpark estimate)
+        print(region)
+        if region == 'Nederland':
+            # Last 3 days are extrapolation, but peek at one extra day for the
+            # smooth curve.
+            Rt_smooth = scipy.signal.savgol_filter(Rt.iloc[:-2], 13, 2)[:-1]
+            Rt_smooth = pd.Series(Rt_smooth, index=Rt.index[:-3])
+            # Error: hardcoded estimate 0.05. Because of SG filter, last 6 days
+            # are increasingly less accurate.
+            Rt_err = np.full(len(Rt_smooth), 0.05)
+            Rt_err[-4:] *= np.linspace(1, 1.4, 4)
+            ax.fill_between(Rt_smooth.index,
+                            Rt_smooth.values-Rt_err, Rt_smooth.values+Rt_err,
+                            color=color, alpha=0.15, zorder=-10)
+
 
         labels.append((Rt[-1], f' {label}'))
 
@@ -903,7 +951,6 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
 
 
     iex = dict(r7=3, sg=7)[source] # days of extrapolation
-    y_lab = ax.get_ylim()[0]
 
     # add_labels(ax, labels, lab_x)
     ax.axvline(Rt.index[-iex-1], color='gray')
@@ -929,10 +976,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
 
     xlim = (Rt.index[0] - pd.Timedelta('12 h'), Rt.index[-1] + pd.Timedelta('3 d'))
     ax.set_xlim(*xlim)
-    df_restrictions = DFS['restrictions']
-    for res_t, res_d in df_restrictions['Description'].iteritems():
-        if res_t >= xlim[0] and res_t <= xlim[1]:
-            ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
+    _add_restriction_labels(ax, Rt.index[0], Rt.index[-1])
 
     ax.text(0.99, 0.98, '@hk_nien', transform=ax.transAxes,
             verticalAlignment='top', horizontalAlignment='right',
@@ -952,29 +996,31 @@ def plot_Rt_oscillation():
 
     df_Rt_rivm = DFS['Rt_rivm']
 
-    Rr = df_Rt_rivm['R'][~df_Rt_rivm['R'].isna()].to_numpy()
-    Rr = Rr[-120:]
+    series_Rr = df_Rt_rivm['R'][~df_Rt_rivm['R'].isna()].iloc[-120:]
+    Rr = series_Rr.to_numpy()
     Rr_smooth = scipy.signal.savgol_filter(Rr, 15, 2)
 
+    dates = series_Rr.index
     ax = axs[0]
     n = len(Rr)
-    ts = np.arange(n)/7
-    ax.plot(ts, Rr, label='Rt (RIVM)')
-    ax.plot(ts, Rr_smooth, label='Rt smooth', zorder=-1)
-    ax.plot(ts, Rr - Rr_smooth, label='Difference')
-    ax.set_xlabel('Time (wk)')
+    ax.plot(dates, Rr, label='Rt (RIVM)')
+    ax.plot(dates, Rr_smooth, label='Rt smooth', zorder=-1)
+    ax.plot(dates, Rr - Rr_smooth, label='Difference')
     ax.set_ylabel('R')
-    ax.set_xlim(ts[0], ts[-1])
+    ax.set_xlim(dates[0], dates[-1])
+    tools.set_xaxis_dateformat(ax)
+    plt.xticks(rotation=0) # undo; doesn't work with subplots
     ax.legend()
-    ax.grid()
     ax = axs[1]
     # window = 1 - np.linspace(-1, 1, len(Rr))**2
 
 
     window = scipy.signal.windows.tukey(n, alpha=(n-14)/n)
-    spectrum = np.fft.rfft((Rr-Rr_smooth) * window)
-    freqs = 7/len(Rr) * np.arange(len(spectrum))
-    ax.plot(freqs, np.abs(spectrum)**2)
+    n_padded = n*3//7*7 # make sure it's a multiple of 1 week
+    spectrum = np.fft.rfft((Rr-Rr_smooth) * window, n=n_padded)
+    freqs = 7/n_padded * np.arange(len(spectrum))
+    mask = (freqs < 2.4)
+    ax.plot(freqs[mask], np.abs(spectrum[mask])**2)
     ax.set_xlabel('Frequency (1/wk)')
     ax.set_ylabel('Power')
     ax.grid()
