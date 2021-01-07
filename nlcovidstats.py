@@ -273,6 +273,8 @@ def load_cumulative_cases(autoupdate=True):
     df = df.loc[~df.Municipality_code.isna()] # Remove NA records.
     df['Date_of_report'] = pd.to_datetime(df['Date_of_report'])
 
+    df.loc[df['Municipality_name'] == 'Hengelo (O.)', 'Municipality_name'] = 'Hengelo'
+
     return df
 
 
@@ -806,7 +808,7 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
     #plt.xticks(pd.to_dateTime(['2020-0{i}-01' for i in range(1, 9)]))
     ax.legend() # loc='lower left')
 
-    tools.set_xaxis_dateformat(ax)
+    tools.set_xaxis_dateformat(ax, yminor=True)
 
     if subtitle:
         title += f'\n{subtitle}'

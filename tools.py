@@ -24,7 +24,7 @@ def pause_commandline(msg='Press Enter to continue.'):
 
 
 
-def set_xaxis_dateformat(ax, xlabel=None, maxticks=10):
+def set_xaxis_dateformat(ax, xlabel=None, maxticks=10, yminor=False):
     """Set x axis formatting for dates; call after adjusting ranges etc."""
 
     plt.xticks(rotation=-20)
@@ -42,6 +42,7 @@ def set_xaxis_dateformat(ax, xlabel=None, maxticks=10):
     elif day_span <= maxticks*7:
         ax.xaxis.set_major_locator(monday_locator)
         ax.xaxis.set_minor_locator(md.DayLocator())
+        minor_grid=True
         ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y-%m-%d'))
     elif day_span <= maxticks*30.5:
         ax.xaxis.set_major_locator(md.MonthLocator())
@@ -56,9 +57,12 @@ def set_xaxis_dateformat(ax, xlabel=None, maxticks=10):
         ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y-%m'))
         minor_grid = (day_span < maxticks*90)
 
-    ax.grid(which='major', color='#aaaaaa')
+    ax.grid(which='major', axis='both', color='#aaaaaa')
     if minor_grid:
-        ax.grid(which='minor', color='#dddddd')
+        ax.grid(which='minor', axis='x', color='#dddddd')
+
+    if yminor:
+        ax.grid(which='minor', axis='y', color='#dddddd')
 
     # ax.grid(which=('both' if minor_grid else 'major'))
     for tl in ax.get_xticklabels():

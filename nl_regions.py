@@ -9,6 +9,13 @@ Function:
 - select_cases_region()
 
 Created on Sat Nov  7 16:08:51 2020  @hk_nien
+
+Note: changes as of 2021-01-07:
+
+    'Haaren', # disappears
+    'Boxtel', 'Vught', 'Tilburg': expanded
+    'Eemsdelta', merger of  'Appingedam', 'Delfzijl', 'Loppersum',
+    'Hengelo' renamed to 'Hengelo (O.)' (we undo this)
 """
 from pathlib import Path
 import re
@@ -38,12 +45,21 @@ def build_municipality_csv(df_cases):
     df_mun =  _load_municipality_data_cbs(df_cases)
     df_mun.rename(columns={'Inwoners': 'Population'}, inplace=True)
 
+
     ### Get provinces from cases dataframe.
     # dataframe: index=Municipality_name, column 'Province'
     mun_provs = df_cases.groupby('Municipality_name').first()[['Province']]
     df_mun['Province'] = mun_provs['Province']
 
-    ## Holiday regions
+    new_row = dict(
+        Municipality='Eemsdelta',
+        Population=df_mun.loc[['Appingedam', 'Delfzijl', 'Loppersum'], 'Population'].sum(),
+        Province='Groningen',
+        )
+
+    df_mun = df_mun.append(
+        pd.DataFrame.from_records([new_row]).set_index('Municipality')
+        )
     _add_holiday_regions(df_mun)
 
     fpath = DATA_PATH / 'municipalities.csv'
@@ -183,6 +199,10 @@ def select_cases_region(dfc, region):
     - Dataframe with Date_of_report as index and
       numerical columns summed as appropriate.
     - npop: population.
+
+    Note: population is sampled at final date. This may result in funny
+    results if the municipality selection changes due to municipality
+    reorganization.
     """
 
     df_mun = get_municipality_data()
@@ -209,13 +229,25 @@ def select_cases_region(dfc, region):
     else:
         mselect = df_mun.loc[[region]]
 
-    npop = mselect['Population'].sum()
-
     # Select the corresponding rows in dfc.
     dfc_sel = dfc.join(mselect[[]], on='Municipality_name', how='inner')
 
     if len(dfc_sel) == 0:
         raise ValueError(f'No data for region={region!r}.')
+
+    # Population based on final date; avoid double-counting
+    # due to municipality reorganization as of 2021-01-07.
+
+    date_end = dfc_sel['Date_of_report'].max()
+    muns_end = dfc.loc[dfc['Date_of_report'] == date_end, 'Municipality_name']
+    if date_end > pd.to_datetime('2021-01-07'):
+        # Distribute 'Haren' over the new municipalities
+        df_mun = df_mun.copy()
+        for mun in ['Boxtel', 'Vught', 'Tilburg']:
+            df_mun.loc[mun, 'Population'] += df_mun.loc['Haaren', 'Population'] // 3
+        df_mun.drop(index='Haaren', inplace=True)
+
+    npop = df_mun.loc[muns_end, 'Population'].sum()
 
     # combine
     dfc_sel = dfc_sel.groupby('Date_of_report').sum()
