@@ -24,10 +24,9 @@ def pause_commandline(msg='Press Enter to continue.'):
 
 
 
-def set_xaxis_dateformat(ax, xlabel=None, maxticks=10, yminor=False):
+def set_xaxis_dateformat(ax, xlabel=None, maxticks=10, yminor=False, ticklabels=True):
     """Set x axis formatting for dates; call after adjusting ranges etc."""
 
-    plt.xticks(rotation=-20)
 
     md = matplotlib.dates
     date_lo, date_hi = pd.to_datetime(md.num2date(ax.get_xlim()))
@@ -38,24 +37,25 @@ def set_xaxis_dateformat(ax, xlabel=None, maxticks=10, yminor=False):
     minor_grid = False
     if day_span <= maxticks:
         ax.xaxis.set_major_locator(md.DayLocator())
-        ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y-%m-%d'))
+        fmt = '%Y-%m-%d'
     elif day_span <= maxticks*7:
         ax.xaxis.set_major_locator(monday_locator)
         ax.xaxis.set_minor_locator(md.DayLocator())
+        fmt = '%Y-%m-%d'
         minor_grid=True
-        ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y-%m-%d'))
     elif day_span <= maxticks*30.5:
         ax.xaxis.set_major_locator(md.MonthLocator())
         ax.xaxis.set_minor_locator(monday_locator)
         ax.tick_params('x', which='minor', direction='in')
-        ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y-%m-%d'))
+        fmt = '%Y-%m-%d'
         if day_span <= maxticks*15:
             minor_grid = True
     else:
         ax.xaxis.set_major_locator(md.MonthLocator([1, 4, 7, 10]))
         ax.xaxis.set_minor_locator(md.MonthLocator())
-        ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%Y-%m'))
+        fmt = '%Y-%m-%d'
         minor_grid = (day_span < maxticks*90)
+
 
     ax.grid(which='major', axis='both', color='#aaaaaa')
     if minor_grid:
@@ -65,8 +65,12 @@ def set_xaxis_dateformat(ax, xlabel=None, maxticks=10, yminor=False):
         ax.grid(which='minor', axis='y', color='#dddddd')
 
     # ax.grid(which=('both' if minor_grid else 'major'))
-    for tl in ax.get_xticklabels():
-        tl.set_ha('left')
+
+    if ticklabels:
+        ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter(fmt))
+        plt.xticks(rotation=-20)
+        for tl in ax.get_xticklabels():
+            tl.set_ha('left')
 
     if xlabel:
         ax.set_xlabel(xlabel)

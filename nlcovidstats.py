@@ -658,7 +658,7 @@ def _zero2nan(s):
     sc[s <= 0] = np.nan
     return sc
 
-def _add_restriction_labels(ax, tmin, tmax):
+def _add_restriction_labels(ax, tmin, tmax, with_ribbons=True):
     """Add restriction labels and ribbons to axis (with date on x-axis).
 
     - ax: axis object
@@ -668,9 +668,8 @@ def _add_restriction_labels(ax, tmin, tmax):
     ymin, ymax = ax.get_ylim()
     y_lab = ymin
     ribbon_yspan =  (ymax - ymin)*0.35
-    ribbon_hgt = ribbon_yspan/7 # ribbon height
-    ribbon_ystep = ribbon_yspan/6.4
-
+    ribbon_hgt = ribbon_yspan*0.1 # ribbon height
+    ribbon_ystep = ribbon_yspan*0.2
     df_restrictions = DFS['restrictions']
     ribbon_colors = ['#ff0000', '#cc7700'] * 2
     if df_restrictions is not None:
@@ -681,13 +680,15 @@ def _add_restriction_labels(ax, tmin, tmax):
             ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
             if pd.isna(res_t_end):
                 continue
-            res_t_end = min(res_t_end, tmax)
-            a, b = (ribbon_ystep * i_res), (ribbon_yspan - ribbon_hgt)
-            rect_y_lo = a % b + y_lab
-            color = ribbon_colors[int(a // b)]
-            rect = matplotlib.patches.Rectangle((res_t, rect_y_lo), res_t_end-res_t, ribbon_hgt,
-                                                color=color, alpha=0.15, lw=0, zorder=20)
-            ax.add_patch(rect)
+            if with_ribbons:
+                res_t_end = min(res_t_end, tmax)
+                a, b = (ribbon_ystep * i_res), (ribbon_yspan - ribbon_hgt)
+                rect_y_lo = a % b + y_lab
+                color = ribbon_colors[int(a // b)]
+
+                rect = matplotlib.patches.Rectangle((res_t, rect_y_lo), res_t_end-res_t, ribbon_hgt,
+                                                    color=color, alpha=0.15, lw=0, zorder=20)
+                ax.add_patch(rect)
             i_res += 1
 
 def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
