@@ -9,6 +9,7 @@ Created on Fri Jan  8 18:01:37 2021
 
 import datetime
 import numpy as np
+import scipy.optimize
 import pandas as pd
 import matplotlib.pyplot as plt
 import scipy.signal
@@ -97,6 +98,15 @@ def get_Rt_cases(delay=7, Tc=4):
     df = pd.DataFrame(dict(Rt=Rt_smooth, Rlo=Rt_smooth-Rt_err, Rhi=Rt_smooth+Rt_err))
     return df, df1
 
+
+def _ywd2date(ywd):
+    """Convert 'yyyy-Www-d' string to date (12:00 on that day)."""
+
+    twelvehours = pd.Timedelta('12 h')
+
+    dt = datetime.datetime.strptime(ywd, "%G-W%V-%w") + twelvehours
+    return dt
+
 def _get_data_dk():
 
     # https://covid19.ssi.dk/-/media/cdn/files/opdaterede-data-paa-ny-engelsk-virusvariant-sarscov2-cluster-b117--01012021.pdf?la=da
@@ -109,14 +119,41 @@ def _get_data_dk():
         ('2020-W52-4', 15143, 0.023)
         ]
     # Convert week numbers to date (Wednesday of the week)
-    twelvehours = pd.Timedelta('12 h')
+
     dk_data = [
-        dict(Date=datetime.datetime.strptime(f'{r[0]}', "%Y-W%W-%w") + twelvehours,
+        dict(Date=_ywd2date(r[0]),
              n_pos=r[1], f_b117=r[2])
         for r in dk_data
         ]
     df = pd.DataFrame.from_records(dk_data).set_index('Date')
-    return dict(Denemarken=df)
+    return {'Denemarken (1 jan)': df}
+
+def _get_data_dk_2():
+
+    # https://www.covid19genomics.dk/statistics
+    dk_data = [
+        # Year-week-da, n_pos, f_b117
+        ('2020-W48-4', -1, 0.002),
+        ('2020-W49-4', -1, 0.002),
+        ('2020-W50-4', -1, 0.004),
+        ('2020-W51-4', -1, 0.008),
+        ('2020-W52-4', -1, 0.020),
+        ('2020-W53-4', -1, 0.024),
+        ('2021-W01-4', -1, 0.036), # preliminary
+        ]
+    # Convert week numbers to date (Wednesday of the week)
+    twelvehours = pd.Timedelta('12 h')
+
+
+    dk_data = [
+        dict(Date=_ywd2date(r[0]),
+             n_pos=r[1], f_b117=r[2])
+        for r in dk_data
+        ]
+
+    df = pd.DataFrame.from_records(dk_data).set_index('Date')
+    return {'Denemarken (15 jan)': df}
+
 
 def _get_data_uk():
 
@@ -179,20 +216,25 @@ def _get_data_ch():
     df2 = pd.DataFrame(
         dict(Date=dates_mid, n_b117=n_per_day)).set_index('Date')
 
-#%%
+    return df2
 
 def get_data_countries():
     """Return dict, key=country_name, value=dataframe with Date, n_pos, f_b117."""
 
     cdict = _get_data_dk()
-    cdict = { **cdict, **_get_data_uk() }
+    cdict = { **cdict, **_get_data_dk_2(), **_get_data_uk() }
 
     return cdict
 
 
-def simulate_and_plot(Rs, f0, title_prefix=''):
-    """Simulate and plot, given R and initial prevelance."""
-    df =  simulate_cases(f0=f0, Rs=Rs, use_r7=True)
+def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-15'), n0=1e4,
+                      clip_nRo=('2099', '2099', '2099')):
+    """Simulate and plot, given R and initial prevelance.
+
+    - clip_nRo: optional max dates for (n_NL, R_nL, f_other)
+    """
+
+    df =  simulate_cases(f0=f0, Rs=Rs, date_ra=date_ra, n0=n0, use_r7=True)
     df_R, dfc = get_Rt_cases()
     df_R = df_R.loc[df_R.index >= '2020-12-18']
     dfc = dfc.loc[dfc.index >= '2020-12-25'] # cases
@@ -204,6 +246,7 @@ def simulate_and_plot(Rs, f0, title_prefix=''):
 
 
     fig, axs = plt.subplots(3, 1, tight_layout=True, sharex=True, figsize=(9, 9))
+    ## top panel
     ax = axs[0]
     ax.set_ylabel('Aantal per dag')
     ax.semilogy(df['ni_old'], label='Infecties oude variant (simulatie)',
@@ -214,32 +257,46 @@ def simulate_and_plot(Rs, f0, title_prefix=''):
                 color=colors[0], linestyle='-', linewidth=2)
     ax.semilogy(df['npos'], label='Positieve tests (simulatie)',
                 color=colors[1], linestyle='-.')
-    ax.semilogy(dfc['Delta7r']*17.4e6, label='Positieve tests (NL)',
+
+    select = dfc.index <= clip_nRo[0]
+    ax.semilogy(dfc.loc[select, 'Delta7r']*17.4e6, label='Positieve tests (NL)',
                 color=colors[2], linestyle='--', linewidth=3)
+    # first valid point of positive tests
+    firstpos = df.loc[~df['npos'].isna()].iloc[0]
+    ax.scatter(firstpos.name, firstpos['npos'], color=colors[1], zorder=10)
+
     ax.set_ylim(df['npos'].min()/5, 20000)
+    ax.yaxis.set_minor_formatter(LogFormatter(minor_thresholds=(2, 1)))
+
     ax.text(pd.to_datetime('2020-12-15'), df['npos'].min()/4.5, 'Lockdown', rotation=90,
         horizontalalignment='center')
     ax.grid()
     ax.grid(which='minor', axis='y')
     ax.legend(loc='lower left')
 
+    ## R plot
     ax = axs[1]
     ax.set_ylabel('R')
     ax.plot(df['Rt'], label='$R_t$ (simulatie)',
             color=colors[1])
-    ax.fill_between(df_R.index, df_R['Rlo'], df_R['Rhi'],
+    ax.scatter(df.index[0], df['Rt'][0], color=colors[1], zorder=10)
+    dfR1 = df_R.loc[df_R.index <= clip_nRo[1]]
+    ax.fill_between(dfR1.index, dfR1['Rlo'], dfR1['Rhi'],
                     color='#0000ff', alpha=0.15, label='$R_t$ (observatie NL)')
     ax.text(pd.to_datetime('2020-12-15'), 0.82, 'Lockdown', rotation=90,
             horizontalalignment='center')
-    ax.grid()
+    ax.grid(zorder=0)
     ax.legend()
 
+    ## f plot
     ax = axs[2]
     ax.set_ylabel('Aandeel B117 pos. tests (%)')
     ax.semilogy(df['f_b117']*100, label='Nederland (simulatie)',
                 color=colors[1])
 
     for country_name, df in get_data_countries().items():
+        df = df.loc[df.index <= clip_nRo[2]]
+
         ax.plot(df.index, df['f_b117']*100, 'o:', linewidth=2, label=country_name)
 
     ax.grid(which='both', axis='y')
@@ -257,12 +314,98 @@ def simulate_and_plot(Rs, f0, title_prefix=''):
     fig.show()
 
 
+def simulate_and_plot_alt(start_t_R=('2021-01-04', 0.85),
+                          req_t_f_npos=('2021-01-15', 0.05, 6e3),
+                          ndays=60,
+                          title_prefix='', R_ratio=1.6, Tg=4.0, report_delay=7.0,
+                          clip_nRo=('2099', '2099', '2099')):
+    """Simulation/plotting starting from apparent R and #positive tests.
+
+    - start_t_R: tuple (start_date, R_eff)
+    - req_t_f_npos: tuple (date, required_f, required_npos), where 'f'
+      is the fraction of B117 as of the positive test results.
+    - ndays: number of days from start_t to simulate.
+    - R_ratio: ratio R_B117/R_old
+    - Tg: generation interval (days)
+    """
+
+    day = pd.Timedelta(1, 'd')
+    t_start = pd.to_datetime(start_t_R[0])
+    R_start = start_t_R[1]
+    t_req = pd.to_datetime(req_t_f_npos[0])
+    f_req, npos_req = req_t_f_npos[1:]
+
+    # convert times to times in days since t_start.
+    tt_req = (t_req - t_start) / day
+
+    odds_req = f_req / (1-f_req) # at specified positive-test date.
+    odds_start = odds_req * R_ratio ** (-(tt_req - report_delay)/Tg)
+    f_start = odds_start/(odds_start + 1)
+
+    def _get_Rt(R_old):
+        """Return effective Rt for this R_old."""
+
+        Ra, Rb = R_old, R_ratio*R_old
+        Rt = np.exp(Tg/(1 + odds_start) * (np.log(Ra)/Tg + odds_start*np.log(Rb)/Tg))
+        return Rt
+
+    # Solve Rt = Rstart for R_old
+    func = lambda R_old: _get_Rt(R_old) - R_start
+    R_old = scipy.optimize.newton(func, x0=R_start)
+
+    # time from start to moment that the required number of positives
+    # were infected.
+    tti_req = tt_req - report_delay
+
+    # Calculate n_total growth factor over dt_pos_spec
+    mgen = tti_req / Tg # number of generations
+    growth_fac = (R_old**mgen + odds_start*(R_ratio*R_old)**mgen) / (1 + odds_start)
+    n0 = npos_req / growth_fac
+
+    simulate_and_plot(
+        (R_old, R_ratio*R_old), f_start, title_prefix=title_prefix, n0=n0,
+        date_ra=(t_start, t_start+ndays*day), clip_nRo=clip_nRo
+        )
+
+
+
+# cases for simulate_and_plot_alt:
+nl_alt_cases = dict(
+    nl_20201228=dict(
+        start_t_R=('2020-12-28', 0.94),
+        req_t_f_npos=('2021-01-04', 0.05, 7.7e3),
+        ndays=45, title_prefix='Extrapolatie vanaf R=0.94 op 28 jan; ',
+        clip_nRo=('2021-01-08', '2020-12-28', '2020-12-31')
+        ),
+    nl_20210104=dict(
+        start_t_R=('2021-01-04', 0.85),
+        req_t_f_npos=('2021-01-15', 0.09, 5.6e3),
+        ndays=45, title_prefix='Extrapolatie vanaf R=0.85 op 2021-01-04; '
+        )
+    )
+
+
+
+
+
+
+
+#%%
 if __name__ == '__main__':
 
     plt.close('all')
     nlcs.init_data()
 
-    simulate_and_plot(Rs=(0.85, 0.85*1.6), f0=0.01, title_prefix='Scenario 1: ')
-    simulate_and_plot(Rs=(0.8, 0.8*1.6), f0=0.15, title_prefix='Scenario 2 (horror): ')
+    simulate_and_plot_alt(**nl_alt_cases['nl_20201228'])
+    simulate_and_plot_alt(**nl_alt_cases['nl_20210104'])
+
+    # simulate_and_plot(Rs=(0.85, 0.85*1.6), f0=0.01, title_prefix='Scenario 1: ')
+
+    # # This was wrong; matched the wrong curve
+    # # Extrapolating from test cases as of 2021-01-15
+    # simulate_and_plot(Rs=(0.82, 0.82*1.6), f0=0.09, title_prefix='Extrapolatie vanaf heden: ',
+    #                   date_ra=('2021-01-04', '2021-02-15'), n0=8e3
+    #                      )
+    #  simulate_and_plot(Rs=(0.8, 0.8*1.6), f0=0.15, title_prefix='Scenario 2 (horror): ')
     # simulate_and_plot(Rs=(0.77, 0.77*1.6), f0=0.2, title_prefix='Scenario 3 (horror): ')
 

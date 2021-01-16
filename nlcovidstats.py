@@ -780,7 +780,7 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
 
         labels.append((df1[dnc_column][-1]*1e5, f' {reg_label} ({texp})'))
 
-    _add_restriction_labels(ax, df1.index[0], df1.index[-1])
+    _add_restriction_labels(ax, df1.index[0], df1.index[-1], with_ribbons=False)
 
 
     dfc = pd.DataFrame.from_records(

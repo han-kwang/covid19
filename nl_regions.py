@@ -239,7 +239,7 @@ def select_cases_region(dfc, region):
     # due to municipality reorganization as of 2021-01-07.
 
     date_end = dfc_sel['Date_of_report'].max()
-    muns_end = dfc.loc[dfc['Date_of_report'] == date_end, 'Municipality_name']
+    muns_end = dfc_sel.loc[dfc['Date_of_report'] == date_end, 'Municipality_name']
     if date_end > pd.to_datetime('2021-01-07'):
         # Distribute 'Haren' over the new municipalities
         df_mun = df_mun.copy()
