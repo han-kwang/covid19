@@ -116,6 +116,8 @@ def download_Rt_rivm_coronawatchNL(maxage='16 days 15 hours',  force=False):
             print(f'Wrote {fpath} .')
 
 
+def _str_datetime(t):
+    return t.strftime('%a %d %b %H:%M')
 
 def download_Rt_rivm(force=False):
     """Download reproduction number from RIVM if new version is available.
@@ -147,6 +149,8 @@ def download_Rt_rivm(force=False):
         now_time = pd.to_datetime('now') + pd.Timedelta('1 h') # CET timezone (should fix this)
         if not force or now_time < last_release_time + pd.Timedelta('7 days'):
             print('Not updating RIVM Rt data; seems recent enough')
+            print(f'  Inferred last_release: {_str_datetime(last_release_time)}; '
+                  f'now: {_str_datetime(now_time)}.')
             return
         local_file_data = fpath.read_bytes()
     else:
@@ -483,6 +487,9 @@ def _correct_delta_anomalies(df):
 
 def construct_Dfunc(delays, plot=False):
     """Return interpolation functions fD(t) and fdD(t).
+
+    fD(t) is the delay between infection and reporting at reporting time t.
+    fdD(t) is its derivative.
 
     Parameter:
 
@@ -965,7 +972,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
         ax.plot(Rt_rivm_final.iloc[:-1], 'k-', label='RIVM')
         ax.plot(Rt_rivm_final.iloc[-2::-7], 'ko', markersize=4)
         # estimates
-        Rt_rivm_est = Rt_rivm.loc[tm_rivm_est-pd.Timedelta(1, 'd'):tm_hi+pd.Timedelta(12, 'h')]
+        Rt_rivm_est = Rt_rivm.loc[tm_rivm_est-pd.Timedelta(1, 'd'):Rt.index[-1]]
         # print(Rt_rivm_est)
         ax.fill_between(Rt_rivm_est.index, Rt_rivm_est['Rmin'], Rt_rivm_est['Rmax'],
                         color='k', alpha=0.15, label='RIVM prognose')
@@ -1006,7 +1013,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
             verticalAlignment='top', horizontalAlignment='right',
             rotation=90)
 
-    ax.legend() # (loc='upper center')
+    ax.legend(loc='upper center')
     tools.set_xaxis_dateformat(ax, maxticks=10)
 
     fig.canvas.set_window_title(f'Rt ({", ".join(regions)[:30]}, ndays={ndays})')

@@ -142,8 +142,6 @@ def _get_data_dk_2():
         ('2021-W01-4', -1, 0.036), # preliminary
         ]
     # Convert week numbers to date (Wednesday of the week)
-    twelvehours = pd.Timedelta('12 h')
-
 
     dk_data = [
         dict(Date=_ywd2date(r[0]),
@@ -191,6 +189,48 @@ def _get_data_uk():
 
     return cdict
 
+def _get_data_nl_koopmans():
+
+    # https://nos.nl/video/2363435-tussen-1-en-5-procent-nederlandse-coronagevallen-besmet-met-britse-variant.html
+    # 2021-01-07: "1%-5% of positive cases" (sampling date not specified, assuming preceding week).
+
+    df = pd.DataFrame(dict(Date=pd.to_datetime(['2021-01-04']), f_b117=[0.03]))
+    df = df.set_index('Date')
+
+    cdict = {
+        'NL "1%-5%"': df
+        }
+    return cdict
+
+
+def _get_data_nl():
+
+    # OMT advies #96
+    # https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id=2021Z00794&did=2021D02016
+    # https://www.rivm.nl/coronavirus-covid-19/omt (?)
+
+    nl_data = [
+        # Year-week-da, n_pos, f_b117
+        ('2020-W49-4', -1, 0.011),
+        ('2020-W50-4', -1, 0.007),
+        ('2020-W51-4', -1, 0.011),
+        ('2020-W52-4', -1, 0.014),
+        ('2020-W53-4', -1, 0.052),
+        ('2021-W01-4', -1, 0.119), # preliminary
+        ]
+    # Convert week numbers to date (Wednesday of the week)
+
+    dk_data = [
+        dict(Date=_ywd2date(r[0]),
+             n_pos=r[1], f_b117=r[2])
+        for r in nl_data
+        ]
+
+    df = pd.DataFrame.from_records(dk_data).set_index('Date')
+    return {'NL OMT-advies #96': df}
+
+
+
 def _get_data_ch():
     """Confirmed B117 cases, but not as a fraction."""
 
@@ -221,10 +261,14 @@ def _get_data_ch():
 def get_data_countries():
     """Return dict, key=country_name, value=dataframe with Date, n_pos, f_b117."""
 
-    cdict = _get_data_dk()
-    cdict = { **cdict, **_get_data_dk_2(), **_get_data_uk() }
+    cdict = { **_get_data_dk_2(), **_get_data_uk(), **_get_data_nl() }
 
     return cdict
+
+def f2odds(f):
+    """Convert fraction B117 to odds ratio B117/other."""
+
+    return f/(1-f)
 
 
 def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-15'), n0=1e4,
@@ -236,7 +280,7 @@ def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-1
 
     df =  simulate_cases(f0=f0, Rs=Rs, date_ra=date_ra, n0=n0, use_r7=True)
     df_R, dfc = get_Rt_cases()
-    df_R = df_R.loc[df_R.index >= '2020-12-18']
+    df_R = df_R.loc[df_R.index >= '2020-12-01']
     dfc = dfc.loc[dfc.index >= '2020-12-25'] # cases
 
     colors = plt.rcParams['axes.prop_cycle']()
@@ -288,16 +332,17 @@ def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-1
     ax.grid(zorder=0)
     ax.legend()
 
-    ## f plot
+    ## odds plot
     ax = axs[2]
-    ax.set_ylabel('Aandeel B117 pos. tests (%)')
-    ax.semilogy(df['f_b117']*100, label='Nederland (simulatie)',
+    ax.set_ylabel('Verhouding B117:overig (pos. tests)')
+    ax.semilogy(f2odds(df['f_b117']), label='Nederland (simulatie)',
                 color=colors[1])
 
+    markers = iter('os^vD*os^vD*')
     for country_name, df in get_data_countries().items():
         df = df.loc[df.index <= clip_nRo[2]]
-
-        ax.plot(df.index, df['f_b117']*100, 'o:', linewidth=2, label=country_name)
+        marker = next(markers)
+        ax.plot(df.index, f2odds(df['f_b117']), f'{marker}:', linewidth=2, label=country_name)
 
     ax.grid(which='both', axis='y')
     ax.legend()
@@ -367,6 +412,59 @@ def simulate_and_plot_alt(start_t_R=('2021-01-04', 0.85),
         date_ra=(t_start, t_start+ndays*day), clip_nRo=clip_nRo
         )
 
+def fit_log_odds(xs, ys):
+    """Fit ln(y) = a*x + b; assume larger relative errors for small y."""
+
+    # sigmas in ln(y). For Poisson statistics, exponent -0.5.
+    sigmas = ys**-0.5
+    a, b = np.polyfit(xs, np.log(ys), deg=1, w=1/sigmas)
+    return a, b
+
+
+
+def plot_countries_odds_ratios():
+    cdict = get_data_countries()
+
+    fig, ax = plt.subplots(tight_layout=True, figsize=(7, 4))
+
+
+    markers = iter('o^vs*o^vs*')
+    colors = plt.rcParams['axes.prop_cycle']()
+    colors = iter([next(colors)['color'] for _ in range(10)])
+
+
+    tm0 = pd.to_datetime('2020-12-01')
+    one_day = pd.Timedelta(1, 'd')
+
+    for desc, df in cdict.items():
+
+        odds = f2odds(df['f_b117']).values
+        tms = df.index
+        xs = (tms - tm0) / one_day
+
+        # 1st and last point in each curve deviates from the 'trend by eye'.
+        # Therefore, ignore it.
+        oslope, odds0 = fit_log_odds(xs[1:-1], odds[1:-1])
+
+        xse = np.array([xs[0] - 3, xs[-1] + 3]) # expanded x range
+        odds_fit = np.exp(oslope * xse + odds0)
+
+        p = next(markers)
+        col = next(colors)
+        label = f'{desc} [{oslope:.3f}]'
+        ax.semilogy(tms, odds, f'{p}:', color=col, label=label)
+        ax.semilogy([tms[0]-3*one_day, tms[-1]+3*one_day], odds_fit, '-', color=col)
+
+    ax.set_ylabel('Odds ratio B117/other')
+    ax.legend(loc='upper left')
+    tools.set_xaxis_dateformat(ax)
+    ax.set_title('B.1.1.7 presence in positive cases, with $\\log_e$ slopes')
+    fig.show()
+
+#%%
+
+
+
 
 
 # cases for simulate_and_plot_alt:
@@ -380,24 +478,30 @@ nl_alt_cases = dict(
     nl_20210104=dict(
         start_t_R=('2021-01-04', 0.85),
         req_t_f_npos=('2021-01-15', 0.09, 5.6e3),
-        ndays=45, title_prefix='Extrapolatie vanaf R=0.85 op 2021-01-04; '
+        ndays=45, title_prefix='Extrapolatie vanaf R=0.85 op 2021-01-04; ',
+        clip_nRo=('2021-01-16', '2021-01-05', '2021-01-10')
+        ),
+    nl_20210106=dict(
+        start_t_R=('2021-01-06', 0.86),
+        req_t_f_npos=('2021-01-17', 0.3, 5.2e3),
+        ndays=45, title_prefix='Extrapolatie vanaf R=0.86 op 2021-01-06; ',
+        clip_nRo=('2021-01-17', '2021-01-15', '2021-01-15')
         )
+
     )
 
 
 
-
-
-
-
-#%%
 if __name__ == '__main__':
 
     plt.close('all')
     nlcs.init_data()
 
+    plot_countries_odds_ratios()
+
     simulate_and_plot_alt(**nl_alt_cases['nl_20201228'])
-    simulate_and_plot_alt(**nl_alt_cases['nl_20210104'])
+    #simulate_and_plot_alt(**nl_alt_cases['nl_20210104'])
+    simulate_and_plot_alt(**nl_alt_cases['nl_20210106'])
 
     # simulate_and_plot(Rs=(0.85, 0.85*1.6), f0=0.01, title_prefix='Scenario 1: ')
 
