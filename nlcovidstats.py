@@ -147,7 +147,7 @@ def download_Rt_rivm(force=False):
         last_release_time = last_time + ((1 - last_time.dayofweek) % 7) * pd.Timedelta('1 day')
         last_release_time += pd.Timedelta('15:15:00')
         now_time = pd.to_datetime('now') + pd.Timedelta('1 h') # CET timezone (should fix this)
-        if not force or now_time < last_release_time + pd.Timedelta('7 days'):
+        if not force and now_time < last_release_time + pd.Timedelta(7, 'd'):
             print('Not updating RIVM Rt data; seems recent enough')
             print(f'  Inferred last_release: {_str_datetime(last_release_time)}; '
                   f'now: {_str_datetime(now_time)}.')
