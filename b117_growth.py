@@ -7,7 +7,6 @@ Created on Fri Jan  8 18:01:37 2021
 @author: @hk_nien
 """
 
-import datetime
 import numpy as np
 import scipy.optimize
 import pandas as pd
@@ -15,6 +14,7 @@ import matplotlib.pyplot as plt
 import scipy.signal
 import tools
 import nlcovidstats as nlcs
+from b117_country_data import get_data_countries
 
 def simulate_cases(date_ra=('2020-12-18', '2021-02-15'),
                    Rs=(0.88, 0.88*1.6), f0=0.01, Tg = 4.0,
@@ -119,204 +119,6 @@ def get_Rt_cases(delay=7, Tc=4):
     df = pd.DataFrame(dict(Rt=Rt_smooth, Rlo=Rt_smooth-Rt_err, Rhi=Rt_smooth+Rt_err))
     return df, df1
 
-
-def _ywd2date(ywd):
-    """Convert 'yyyy-Www-d' string to date (12:00 on that day)."""
-
-    twelvehours = pd.Timedelta('12 h')
-
-    dt = datetime.datetime.strptime(ywd, "%G-W%V-%w") + twelvehours
-    return dt
-
-def _get_data_dk():
-
-    # https://covid19.ssi.dk/-/media/cdn/files/opdaterede-data-paa-ny-engelsk-virusvariant-sarscov2-cluster-b117--01012021.pdf?la=da
-
-    dk_data = [
-        # Year-week-da, n_pos, f_b117
-        ('2020-W49-4', 12663, 0.002),
-        ('2020-W50-4', 21710, 0.005),
-        ('2020-W51-4', 24302, 0.009),
-        ('2020-W52-4', 15143, 0.023)
-        ]
-    # Convert week numbers to date (Wednesday of the week)
-
-    dk_data = [
-        dict(Date=_ywd2date(r[0]),
-             n_pos=r[1], f_b117=r[2])
-        for r in dk_data
-        ]
-    df = pd.DataFrame.from_records(dk_data).set_index('Date')
-    return {'Denemarken (1 jan)': df}
-
-def _get_data_dk_2():
-
-    # https://www.covid19genomics.dk/statistics
-    dk_data = [
-        # Year-week-da, n_pos, f_b117
-        ('2020-W48-4', -1, 0.002),
-        ('2020-W49-4', -1, 0.002),
-        ('2020-W50-4', -1, 0.004),
-        ('2020-W51-4', -1, 0.008),
-        ('2020-W52-4', -1, 0.020),
-        ('2020-W53-4', -1, 0.024),
-        ('2021-W01-4', -1, 0.039),
-        ('2021-W02-4', -1, 0.070), # preliminary# preliminary
-        ]
-    # Convert week numbers to date (Wednesday of the week)
-
-    dk_data = [
-        dict(Date=_ywd2date(r[0]),
-             n_pos=r[1], f_b117=r[2])
-        for r in dk_data
-        ]
-
-    df = pd.DataFrame.from_records(dk_data).set_index('Date')
-    return {'Denemarken (19 jan)': df}
-
-
-def _get_data_uk():
-
-    #https://twitter.com/hk_nien/status/1344937884898488322
-    # data points read from plot (as ln prevalence)
-    seedata = {
-        '2020-12-21': [
-            ['2020-09-25', -4.2*1.25],
-            ['2020-10-02', -3.5*1.25],
-            ['2020-10-15', -3.2*1.25],
-            ['2020-10-20', -2.3*1.25],
-            ['2020-10-29', -2.3*1.25],
-            ['2020-11-05', -1.5*1.25],
-            ['2020-11-12', -0.9*1.25],
-            ['2020-11-19', -0.15*1.25],
-            ['2020-11-27', 0.8*1.25]
-            ],
-        '2020-12-31': [
-            ['2020-10-31', -2.1],
-            ['2020-11-08', -1.35],
-            ['2020-11-15', -0.75],
-            ['2020-11-22', -0.05],
-            ['2020-11-29', 0.05],
-            ]
-        }
-
-    cdict = {}
-    for report_date, records in seedata.items():
-        df = pd.DataFrame.from_records(records, columns=['Date', 'ln_odds'])
-        df['Date'] = pd.to_datetime(df['Date'])
-        odds = np.exp(df['ln_odds'])
-        df['f_b117'] = odds / (1 + odds)
-        df = df[['Date', 'f_b117']].set_index('Date')
-        cdict[f'UK (SEE region, {report_date})'] = df
-
-    return cdict
-
-def _get_data_nl_koopmans():
-
-    # https://nos.nl/video/2363435-tussen-1-en-5-procent-nederlandse-coronagevallen-besmet-met-britse-variant.html
-    # 2021-01-07: "1%-5% of positive cases" (sampling date not specified, assuming preceding week).
-
-    df = pd.DataFrame(dict(Date=pd.to_datetime(['2021-01-04']), f_b117=[0.03]))
-    df = df.set_index('Date')
-
-    cdict = {
-        'NL "1%-5%"': df
-        }
-    return cdict
-
-
-def _get_data_nl_omt96():
-
-    # OMT advies #96
-    # https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id=2021Z00794&did=2021D02016
-    # https://www.rivm.nl/coronavirus-covid-19/omt (?)
-
-    nl_data = [
-        # Year-week-da, n_pos, f_b117
-        ('2020-W49-4', -1, 0.011),
-        ('2020-W50-4', -1, 0.007),
-        ('2020-W51-4', -1, 0.011),
-        ('2020-W52-4', -1, 0.014),
-        ('2020-W53-4', -1, 0.052),
-        ('2021-W01-4', -1, 0.119), # preliminary
-        ]
-    # Convert week numbers to date (Wednesday of the week)
-
-    dk_data = [
-        dict(Date=_ywd2date(r[0]),
-             n_pos=r[1], f_b117=r[2])
-        for r in nl_data
-        ]
-
-    df = pd.DataFrame.from_records(dk_data).set_index('Date')
-    return {'NL OMT-advies #96': df}
-
-def _get_data_nl_rivm20jan():
-
-    # OMT advies #96
-    # https://www.tweedekamer.nl/sites/default/files/atoms/files/20210120_technische_briefing_commissie_vws_presentati_jaapvandissel_rivm_0.pdf
-    nl_data = [
-        # Year-week-da, n_pos, f_b117
-        ('2020-W49-5', -1, 0.015),
-        ('2020-W50-5', -1, 0.010),
-        ('2020-W51-5', -1, 0.015),
-        ('2020-W52-5', -1, 0.020),
-        ('2020-W53-5', -1, 0.050),
-        ('2021-W01-5', -1, 0.090), # preliminary
-        ]
-    # Convert week numbers to date (Wednesday of the week)
-
-    dk_data = [
-        dict(Date=_ywd2date(r[0]),
-             n_pos=r[1], f_b117=r[2])
-        for r in nl_data
-        ]
-
-    df = pd.DataFrame.from_records(dk_data).set_index('Date')
-    return {'NL RIVM 2021-01-20': df}
-
-
-
-
-
-def _get_data_ch():
-    """Confirmed B117 cases, but not as a fraction."""
-
-    # https://twitter.com/b117science/status/1347503372719558656
-
-    cumdata = [
-        ('2020-12-23', 0),
-        ('2020-12-24', 3),
-        ('2020-12-29', 5),
-        ('2021-01-05', 29),
-        ('2021-01-06', 36),
-        ('2021-01-07', 46),
-        ('2021-01-08', 86),
-        ]
-
-    dates = pd.to_datetime([d for d, _ in cumdata])
-    ncum = np.array([n for _, n in cumdata])
-    deltas = ncum[1:] - ncum[:-1]
-    delta_ts = np.array((dates[1:] - dates[:-1]).days) # in days
-    dates_mid = dates[:-1] + delta_ts * pd.Timedelta('1 d')
-    n_per_day = deltas / delta_ts
-
-    df2 = pd.DataFrame(
-        dict(Date=dates_mid, n_b117=n_per_day)).set_index('Date')
-
-    return df2
-
-def get_data_countries():
-    """Return dict, key=country_name, value=dataframe with Date, n_pos, f_b117."""
-
-    cdict = {
-        **_get_data_dk_2(),
-        **_get_data_uk(),
-        **_get_data_nl_omt96(),
-        **_get_data_nl_rivm20jan(),
-        }
-
-    return cdict
 
 def f2odds(f):
     """Convert fraction B117 to odds ratio B117/other."""
@@ -624,7 +426,7 @@ def simulate_and_plot_alt(start_t_R=('2021-01-04', 0.85),
     simplot_kwargs = {k:v for (k,v) in sim_kwargs_nom.items() if k in simplot_kwargs}
 
     simulate_and_plot(**simplot_kwargs, df_lohi=df_lohi,
-                      title_prefix=title_prefix.format(R=Rstart))
+                      title_prefix=title_prefix.format(R=Rstart, start_date=start_t_R[0]))
 
 def fit_log_odds(xs, ys):
     """Fit ln(y) = a*x + b; assume larger relative errors for small y."""
@@ -666,7 +468,7 @@ def plot_countries_odds_ratios():
         p = next(markers)
         col = next(colors)
         label = f'{desc} [{oslope:.3f}]'
-        ax.semilogy(tms, odds, f'{p}:', color=col, label=label)
+        ax.semilogy(tms, odds, f'{p}', color=col, label=label)
         ax.semilogy([tms[0]-3*one_day, tms[-1]+3*one_day], odds_fit, '-', color=col)
 
     ax.set_ylabel('Odds ratio B117/other')
@@ -714,8 +516,8 @@ nl_alt_cases = dict(
         ),
     nl_202101ak_latest=dict(
         start_t_R=('2021-01-10', 0.93), R_ratio=1.5,
-        req_t_f_npos=('2021-01-21', odds2f(0.30), 5.3e3),
-        ndays=45, title_prefix='Extrapolatie vanaf R={R:.2f} op 2021-01-06; ',
+        req_t_f_npos=('2021-01-21', odds2f(0.30), 5.1e3),
+        ndays=45, title_prefix='Extrapolatie vanaf R={R:.2f} op {start_date}; ',
         # Don't clip.
         clip_nRo=('2099', '2099', '2099'),
         use_r7=False,
