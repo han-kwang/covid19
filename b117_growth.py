@@ -245,7 +245,7 @@ def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-1
 
 
     markers = iter('os^vD*os^vD*')
-    for country_name, df in get_data_countries().items():
+    for country_name, df in get_data_countries(uk_regions=False).items():
         df = df.loc[df.index <= clip_nRo[2]]
         marker = next(markers)
         ax.plot(df.index, f2odds(df['f_b117']), f'{marker}:', linewidth=2, label=country_name)
@@ -438,15 +438,16 @@ def fit_log_odds(xs, ys):
 
 
 
-def plot_countries_odds_ratios():
-    cdict = get_data_countries()
+def plot_countries_odds_ratios(subtract_uk_bg=True):
+    cdict = get_data_countries(recent_only=True, uk_regions=True,
+                               subtract_uk_bg=subtract_uk_bg)
 
-    fig, ax = plt.subplots(tight_layout=True, figsize=(7, 4))
+    fig, ax = plt.subplots(tight_layout=True, figsize=(10, 5.5))
 
 
-    markers = iter('o^vs*o^vs*')
+    markers = iter('o^vs*Do^vs*D'*2)
     colors = plt.rcParams['axes.prop_cycle']()
-    colors = iter([next(colors)['color'] for _ in range(10)])
+    colors = iter([next(colors)['color'] for _ in range(20)])
 
 
     tm0 = pd.to_datetime('2020-12-01')
@@ -458,9 +459,10 @@ def plot_countries_odds_ratios():
         tms = df.index
         xs = (tms - tm0) / one_day
 
-        # 1st and last point in each curve deviates from the 'trend by eye'.
-        # Therefore, ignore it.
-        oslope, odds0 = fit_log_odds(xs[1:-1], odds[1:-1])
+        # early points and last point in each curve deviates from the 'trend by eye'.
+        # Therefore, ignore them.
+        ifirst = max(1, len(xs)-6)
+        oslope, odds0 = fit_log_odds(xs[ifirst:-1], odds[ifirst:-1])
 
         xse = np.array([xs[0] - 3, xs[-1] + 3]) # expanded x range
         odds_fit = np.exp(oslope * xse + odds0)
@@ -472,10 +474,27 @@ def plot_countries_odds_ratios():
         ax.semilogy([tms[0]-3*one_day, tms[-1]+3*one_day], odds_fit, '-', color=col)
 
     ax.set_ylabel('Odds ratio B117/other')
-    ax.legend(loc='upper left')
+    ax.legend(bbox_to_anchor=(1, 1))
+
     tools.set_xaxis_dateformat(ax)
     ax.set_title('B.1.1.7 presence in positive cases, with $\\log_e$ slopes')
+    fig.canvas.set_window_title('B117 in countries/regions')
+
+    if subtract_uk_bg:
+        sgtf_subtracted = ' (Backgroud positive rate subtracted)'
+    else:
+        sgtf_subtracted = ''
+    ax.text(1.02, 0.07,
+            'UK data is based on population sampling\n'
+            f'and mostly SGTF{sgtf_subtracted}.\n'
+            'UK SGTF data shifted by 14 days to estimate symptom onset.\n'
+            'Sources: Walker et al., Imperial College, covid19genomics.dk,\n'
+            'RIVM NL, Borges et al.'
+            ,
+            transform=ax.transAxes)
+
     fig.show()
+
 
 #%%
 
@@ -514,9 +533,21 @@ nl_alt_cases = dict(
         # https://nos.nl/artikel/2365254-het-omt-denkt-dat-een-avondklok-een-flink-effect-heeft-waar-is-dat-op-gebaseerd.html
         R_changes=[('2021-01-23', 0.9, 'Avondklok')],
         ),
-    nl_202101ak_latest=dict(
+    nl_ak_20210121=dict(
         start_t_R=('2021-01-10', 0.93), R_ratio=1.5,
         req_t_f_npos=('2021-01-21', odds2f(0.30), 5.1e3),
+        ndays=45, title_prefix='Extrapolatie vanaf R={R:.2f} op {start_date}; ',
+        # Don't clip.
+        clip_nRo=('2099', '2099', '2099'),
+        use_r7=False,
+        # OMT estimates -8% to -13% effect on Rt
+        # https://nos.nl/artikel/2365254-het-omt-denkt-dat-een-avondklok-een-flink-effect-heeft-waar-is-dat-op-gebaseerd.html
+        R_changes=[('2021-01-23', 0.9, 'Avondklok')],
+        var_Rstart_Rratio_f=(0.03, 1.4, 1.6, odds2f(0.23), odds2f(0.37))
+        ),
+    nl_ak_latest=dict(
+        start_t_R=('2021-01-13', 0.96), R_ratio=1.5,
+        req_t_f_npos=('2021-01-23', odds2f(0.3), 5.2e3),
         ndays=45, title_prefix='Extrapolatie vanaf R={R:.2f} op {start_date}; ',
         # Don't clip.
         clip_nRo=('2099', '2099', '2099'),
@@ -535,12 +566,13 @@ if __name__ == '__main__':
     plt.close('all')
     nlcs.init_data()
 
-    plot_countries_odds_ratios()
+    plot_countries_odds_ratios(subtract_uk_bg=True)
+    plot_countries_odds_ratios(subtract_uk_bg=False)
 
     #simulate_and_plot_alt(**nl_alt_cases['nl_20201228'])
     #simulate_and_plot_alt(**nl_alt_cases['nl_20210106'])
 
-    simulate_and_plot_alt(**nl_alt_cases['nl_202101ak_latest'])
+    simulate_and_plot_alt(**nl_alt_cases['nl_ak_latest'])
 
     # simulate_and_plot(Rs=(0.85, 0.85*1.6), f0=0.01, title_prefix='Scenario 1: ')
 

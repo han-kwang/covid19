@@ -6,6 +6,8 @@ Function: get_country_data().
 
 @author: @hk_nien
 """
+import re
+from pathlib import Path
 import pandas as pd
 import datetime
 import numpy as np
@@ -38,7 +40,7 @@ def _convert_ywd_records(records, colnames=('f_b117',)):
     return df
 
 
-def _get_data_uk():
+def _get_data_uk_genomic():
 
     #https://twitter.com/hk_nien/status/1344937884898488322
     # data points read from plot (as ln prevalence)
@@ -70,7 +72,8 @@ def _get_data_uk():
         odds = np.exp(df['ln_odds'])
         df['f_b117'] = odds / (1 + odds)
         df = df[['Date', 'f_b117']].set_index('Date')
-        cdict[f'UK (SEE region, {report_date})'] = df
+
+        cdict[f'UK (South East, sequenced, {report_date})'] = df
 
     return cdict
 
@@ -143,13 +146,128 @@ def _get_data_countries_weeknos():
 
     return cdict
 
+regions_pop = {
+    'South East England': 9180135,
+    'London': 8961989,
+    'North West England': 7341196,
+    'East England': 6236072,
+    'West Midlands': 5934037,
+    'South West England': 5624696,
+    'Yorkshire': 5502967,
+    'East Midlands': 4835928,
+    'North East England': 2669941,
+    }
 
-def get_data_countries():
+regions_pop['multiple regions'] = sum(regions_pop.values())
+
+def _get_data_uk_regions(subtract_bg=True):
+    """Get datasets for UK regions. Original data represents 'positive population'.
+    Dividing by 28 days and time-shifting 14 days to get estimated daily increments.
+
+    With subtract_bg: Subtracting lowest UK-region value - assuming background
+    false-positive for S-gene target failure.
+
+    Data source: Walker et al., https://doi.org/10.1101/2021.01.13.21249721
+    """
+
+    index_combi = pd.date_range('2020-09-28', '2020-12-14', freq='7 d')
+    df_combi = pd.DataFrame(index=index_combi)
+    ncolumns = ['pct_sgtf', 'pct_othr']
+    for col in ncolumns:
+        df_combi[col] = 0
+
+    cdict = {'UK (multiple regions)': df_combi}
+    for fpath in sorted(Path('data').glob('uk_*_b117_pop.csv')):
+        ma = re.search('uk_(.*)_b117', str(fpath))
+        region = ma.group(1).replace('_', ' ')
+        df = pd.read_csv(fpath, comment='#').rename(columns={'Unnamed: 0': 'Date'})
+
+        df['Date'] = pd.to_datetime(df['Date']) - pd.Timedelta(14, 'd')
+        df = df.set_index('Date')
+
+        # interpolate and add to the combined dataframe.
+        df2 = pd.DataFrame(index=index_combi) # resampling data here
+        df2 = df2.merge(df[ncolumns], how='outer', left_index=True, right_index=True)
+        df2 = df2.interpolate(method='quadratic').loc[index_combi]
+
+        for col in ncolumns:
+            df_combi[col] += df2[col]
+
+        cdict[f'UK ({region})'] = df
+
+    # convert to estimated new cases per day.
+    for key, df in cdict.items():
+        region = re.search(r' \((.*)\)', key).group(1)
+
+
+        # estimate false-positive for SGTF as representing B.1.1.7
+        if subtract_bg:
+            pct_bg = df['pct_sgtf'].min()
+        else:
+            pct_bg = 0.0
+
+        df['n_b117'] = ((df['pct_sgtf'] - pct_bg)*(0.01/28 * regions_pop[region])).astype(int)
+        df['n_oth'] = ((df['pct_othr'] + pct_bg)*(0.01/28 * regions_pop[region])).astype(int)
+
+
+        # this doesn't work
+        # if subtract_bg:
+        #     pct_tot = df['pct_sgtf'] + df['pct_othr']
+        #     # f: fraction of positive test. Correct for background.
+        #     f_sgtf = df['pct_sgtf']/pct_tot
+        #     f_sgtf_min = f_sgtf.min()
+        #     f_sgtf -= f_sgtf_min
+
+        #     # convert back to pct values
+        #     df['pct_sgtf'] = pct_tot * f_sgtf
+        #     df['pct_othr'] = pct_tot * (1-f_sgtf)
+        # df['n_b117'] = (df['pct_sgtf'] * (0.01/28 * regions_pop[region])).astype(int)
+        # df['n_oth'] = (df['pct_othr'] * (0.01/28 * regions_pop[region])).astype(int)
+
+        df.drop(index=df.index[df['n_b117'] <= 0], inplace=True)
+
+        df['n_pos'] = df['n_b117'] + df['n_oth']
+        df['or_b117'] = df['n_b117'] / df['n_oth']
+        df['f_b117'] = df['or_b117']/(1 + df['or_b117'])
+
+    for col in ncolumns + ['n_pos']:
+        df_combi[col] = np.around(df_combi[col], 0).astype(int)
+
+    return cdict
+
+
+
+
+def get_data_countries(recent_only=True, uk_regions=True, subtract_uk_bg=True):
     """Return dict, key=description, value=dataframe with Date, n_pos, f_b117, or_b117."""
 
+
+    cdict_uk = _get_data_uk_regions(subtract_bg=subtract_uk_bg)
+    key = 'UK (multiple regions)'
+    cdict_uk_2 = {key: cdict_uk[key]} # selection
+
+    if uk_regions:
+        for k, v in cdict_uk.items():
+            if k in cdict_uk_2:
+                continue
+            # rename UK (x) -> x
+            m = re.search(r'UK \((.*)\)', k)
+            cdict_uk_2[f'{m.group(1)} (UK)'] = v
+
     cdict = {
-        **_get_data_uk(),
+        **cdict_uk_2,
+        **_get_data_uk_genomic(), # this is now covered by cdict_uk
         **_get_data_countries_weeknos(),
         }
+
+    if recent_only:
+        # only the last one of each country code
+        seen = set()
+        for key in list(cdict.keys())[::-1]:
+            cc = key[:2]
+            if re.match('[A-Z][A-Z]', cc) and cc in seen:
+                del cdict[key]
+            else:
+                seen.add(cc)
 
     return cdict
