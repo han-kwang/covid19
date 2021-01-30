@@ -135,10 +135,38 @@ def _fill_between_df(ax, df, col_lo, col_hi, **kwargs):
                     **kwargs)
 
 
+def add_percentage_y2_axis(ax_o, label='Frequency B.1.1.7 (%)'):
+    """Add y2 axis with percentages on odds axis."""
+
+    ax_p = ax_o.twinx()
+    olo, ohi = ax_o.get_ylim()
+    ax_o.set_ylim(olo, ohi) # make sure they don't change anymore
+    ax_p.set_ylabel(label)
+    ax_p.set_ylim(olo, ohi)
+    ax_p.set_yscale('log')
+    ax_p.minorticks_off()
+
+    pvals = np.array([0.001, 0.01, 0.1, 1, 10, 30, 60, 80,
+                      90, 95, 98, 99, 99.5, 99.8,
+                      99.9, 99.95, 99.98, 99.99
+                      ])
+    ovals = f2odds(0.01*pvals)
+
+    mask = (ovals >= olo) & (ovals <= ohi)
+    ovals = ovals[mask]
+    pvals = pvals[mask]
+
+    y2ticks = ovals
+    y2labels = [f'{p:.4g}' for p in pvals]
+    ax_p.set_yticks(y2ticks, minor=False)
+    ax_p.set_yticklabels(y2labels)
+
+
+
 
 def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-15'), n0=1e4,
                       clip_nRo=('2099', '2099', '2099'), R_changes=None, use_r7=True,
-                      df_lohi=None
+                      df_lohi=None, country_select=None
                       ):
     """Simulate and plot, given R and initial prevelance.
 
@@ -147,6 +175,8 @@ def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-1
       For example: R_changes=[('2021-01-23', 0.8, 'Avondklok')]
     - df_lohi: optional DataFrame with columns nlo, nhi, Rlo, Rhi to use
       as confidence intervals.
+    - country_select: selection preset (str) for which countries to show.
+      See get_data_countries() for details.
     """
 
     df = simulate_cases(f0=f0, Rs=Rs, date_ra=date_ra, n0=n0, use_r7=use_r7,
@@ -167,7 +197,7 @@ def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-1
 
 
     fig, axs = plt.subplots(3, 1, tight_layout=True, sharex=True, figsize=(9, 10))
-    ## top panel
+    ## top panel: number of cases
     ax = axs[0]
     ax.set_ylabel('Aantal per dag')
     ax.semilogy(df['ni_old'], label='Infecties oude variant (simulatie)',
@@ -197,8 +227,11 @@ def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-1
     ax.set_ylim(df['npos'].min()/3, 20000)
     ax.yaxis.set_minor_formatter(LogFormatter(minor_thresholds=(2, 1)))
 
-    ax.text(pd.to_datetime('2020-12-15'), df['npos'].min()/2.6, 'Lockdown', rotation=90,
-        horizontalalignment='center')
+    date_labels = [('2020-12-15', 0, 'Lockdown')] + (R_changes or [])
+    for date, _, label in date_labels:
+        ax.text(pd.to_datetime(date), df['npos'].min()/2.6, label, rotation=90,
+            horizontalalignment='center')
+
     ax.grid()
     ax.grid(which='minor', axis='y')
     ax.legend(loc='lower left')
@@ -244,19 +277,27 @@ def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-1
                           color=colors[1], alpha=0.15, zorder=-10)
 
 
-    markers = iter('os^vD*os^vD*')
-    for country_name, df in get_data_countries(uk_regions=False).items():
+    markers = iter('o^vs*Do^vs*D'*2)
+    cdict = get_data_countries(select=country_select).items()
+    for country_name, df in cdict:
         df = df.loc[df.index <= clip_nRo[2]]
         marker = next(markers)
-        ax.plot(df.index, f2odds(df['f_b117']), f'{marker}:', linewidth=2, label=country_name)
+        label = country_name if len(country_name) < 25 else country_name[:23] + '...'
+        ax.plot(df.index, f2odds(df['f_b117']), f'{marker}:', linewidth=2, label=label,
+                zorder=100)
+
+
 
     ax.grid(which='both', axis='y')
-    ax.legend()
+    ax.legend(fontsize=10, framealpha=0.9)
 
     ax.yaxis.set_major_formatter(FormatStrFormatter('%g'))
     # Monkey-patch to prevent '%e' formatting.
     LogFormatter._num_to_string = lambda _0, x, _1, _2: ('%g' % x)
     ax.yaxis.set_minor_formatter(LogFormatter(minor_thresholds=(2, 1)))
+
+    add_percentage_y2_axis(ax, label='Aandeel B.1.1.7 (%)')
+
     title = f'{title_prefix}R_oud={Rs[0]:.2f};  R_B117={Rs[1]:.2f}'
     if R_changes:
         title += f'\n(R wijzigt vanaf {R_changes[0][0]})'
@@ -265,53 +306,57 @@ def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-1
     for i in range(3):
         tools.set_xaxis_dateformat(axs[i], maxticks=15, ticklabels=(i==2))
     fig.show()
+    plt.pause(0.75)
+
+class _StartCond:
+    def __init__(self, date, value):
+        self.date = pd.to_datetime(date)
+        self.val = value
+    def __repr__(self):
+        ymd=self.date.strftime("%Y-%m-%d")
+        return f'({ymd}, {self.val})'
 
 def get_sim_args_from_start_cond(
-        start_t_R=('2021-01-04', 0.85),
-        req_t_f_npos=('2021-01-15', 0.05, 6e3),
+        conditions,
         ndays=60,
         title_prefix='', R_ratio=1.6, Tg=4.0, report_delay=7.0,
         clip_nRo=('2099', '2099', '2099'),
         R_changes=None, use_r7=True,
         ):
-    """Return dict with kwargs for simulate_cases()."""
+    """Return dict with kwargs for simulate_cases().
+
+    - conditions: dict with R, f, npos keys; values tuples (date, value).
+    """
 
 
-    day = pd.Timedelta(1, 'd')
-    t_start = pd.to_datetime(start_t_R[0])
-    R_start = start_t_R[1]
-    t_req = pd.to_datetime(req_t_f_npos[0])
-    f_req, npos_req = req_t_f_npos[1:]
+    one_day = pd.Timedelta(1, 'd')
+    conds = conditions.copy()
+    for key, date_value in conditions.items():
+        conds[key] = _StartCond(*date_value)
 
-    # convert times to times in days since t_start.
-    tt_req = (t_req - t_start) / day
+    # Start time of the curve is the R date condition.
+    t_start = conds['R'].date
 
-    odds_req = f_req / (1-f_req) # at specified positive-test date.
-    odds_start = odds_req * R_ratio ** (-(tt_req - report_delay)/Tg)
-    f_start = odds_start/(odds_start + 1)
+    def delta_t(t1, t2):
+        """From datetime to number of days."""
+        return (t1 - t2)/one_day
 
-    def _get_Rt(R_old):
-        """Return effective Rt for this R_old."""
+    # f_start: fraction of UK variant at infection time, start time
+    odds_req = f2odds(conds['f'].val)
+    num_gen = (delta_t(conds['f'].date, conds['R'].date) - report_delay)/Tg
+    odds_start = odds_req * R_ratio ** (-num_gen)
+    f_start = odds2f(odds_start)
 
-        Ra, Rb = R_old, R_ratio*R_old
-        Rt = np.exp(Tg/(1 + odds_start) * (np.log(Ra)/Tg + odds_start*np.log(Rb)/Tg))
-        return Rt
+    # R number for old strain
+    R_old = conds['R'].val * R_ratio**(-f_start)
 
-    # Solve Rt = Rstart for R_old
-    func = lambda R_old: _get_Rt(R_old) - R_start
-    R_old = scipy.optimize.newton(func, x0=R_start)
-
-    # time from start to moment that the required number of positives
-    # were infected.
-    tti_req = tt_req - report_delay
-
-    # Calculate n_total growth factor over dt_pos_spec
-    mgen = tti_req / Tg # number of generations
-    growth_fac = (R_old**mgen + odds_start*(R_ratio*R_old)**mgen) / (1 + odds_start)
-    n0 = npos_req / growth_fac
+    # calculate infection cases at t_start
+    num_gen = (delta_t(conds['npos'].date, conds['R'].date) - report_delay) / Tg # number of generations
+    growth_fac = (R_old**num_gen + odds_start*(R_ratio*R_old)**num_gen) / (1 + odds_start)
+    n0 = conds['npos'].val / growth_fac
 
     kwargs = dict(
-        date_ra=(t_start, t_start+ndays*day),
+        date_ra=(t_start, t_start+ndays*one_day),
         Rs=(R_old, R_ratio*R_old),
         f0=f_start, Tg=Tg, use_r7=use_r7, report_delay=report_delay, n0=n0,
         R_changes=R_changes
@@ -320,7 +365,7 @@ def get_sim_args_from_start_cond(
     return kwargs
 
 
-def monte_carlo_runs(startcond_nom, Rstart_ra, Rratio_ra, f_ra, n=120):
+def monte_carlo_runs(startcond_nom, dR=0.03, fac_RR=1.077, fac_odds=1.2, n=120):
     """Run many simulations for 95% intrevals on npos and R.
 
     Ranges are supposed to represent ±2 sigma intervals.
@@ -328,9 +373,10 @@ def monte_carlo_runs(startcond_nom, Rstart_ra, Rratio_ra, f_ra, n=120):
     Parameters:
 
     - startcond_nom: nominal start conditions (dict).
-    - Rstart_ra: tuple (R_lo, R_hi), range of effective R.
-    - f_ra: tuple (f_lo, f_hi), range of f at start condition.
-    - number of runs.
+    - dR: R deviation (±).
+    - fac_RR: R-ratio factor (>1); range will be RR/fac .. RR*fac.
+    - fac_odds: odds factor; range will be odds/fac .. odds*fac
+    - n: number of runs.
 
     Return:
 
@@ -340,28 +386,28 @@ def monte_carlo_runs(startcond_nom, Rstart_ra, Rratio_ra, f_ra, n=120):
     # output for each run, list of arrays
     runs = dict(Rt=[], npos=[], f_b117=[])
 
-    def sample_from_ra(ra):
-        """Return random number, normal distribution, +/-2 sigma range specified."""
+    def sample_fac(fac):
+        return np.exp(np.random.normal(scale=0.5*np.log(fac)))
+    def sample_norm(twosigma):
+        return np.random.normal(scale=0.5*twosigma)
 
-        lo, hi = ra
-        mu = (lo + hi)/2
-        sigma = (hi - lo)/4
-        return np.random.normal(mu, sigma)
+    conds = startcond_nom['conditions']
 
     np.random.seed(1)
     for _ in range(n):
-
-        f = sample_from_ra(f_ra)
-        stR = startcond_nom['start_t_R']
-        rtfn = startcond_nom['req_t_f_npos']
-
+        f = odds2f(f2odds(conds['f'][1]) * sample_fac(fac_odds))
+        R = conds['R'][1] + sample_norm(dR)
+        RR = startcond_nom['R_ratio'] * sample_fac(fac_RR)
+        new_conds = {
+            **conds,
+            'R': (conds['R'][0], R),
+            'f': (conds['f'][0], f),
+            }
         startcond = {
             **startcond_nom,
-            'start_t_R': (stR[0], sample_from_ra(Rstart_ra)),
-            'R_ratio': sample_from_ra(Rratio_ra),
-            'req_t_f_npos': (rtfn[0], f, rtfn[2])
+            'conditions': new_conds,
+            'R_ratio': RR,
             }
-
         sim_kwargs = get_sim_args_from_start_cond(**startcond)
         df = simulate_cases(**sim_kwargs)
         for col in runs.keys():
@@ -378,45 +424,42 @@ def monte_carlo_runs(startcond_nom, Rstart_ra, Rratio_ra, f_ra, n=120):
     return df_lohi
 
 
-def simulate_and_plot_alt(start_t_R=('2021-01-04', 0.85),
-                          req_t_f_npos=('2021-01-15', 0.05, 6e3),
+def simulate_and_plot_alt(conditions,
                           ndays=60,
                           title_prefix='', R_ratio=1.6, Tg=4.0, report_delay=7.0,
                           clip_nRo=('2099', '2099', '2099'),
                           R_changes=None, use_r7=True,
-                          var_Rstart_Rratio_f=None,
+                          variations=None, country_select=None,
                           ):
     """Simulation/plotting starting from apparent R and #positive tests.
 
-    - start_t_R: tuple (start_date, R_eff)
-    - req_t_f_npos: tuple (date, required_f, required_npos), where 'f'
-      is the fraction of B117 as of the positive test results.
+    Parameters:
+
+    - conditions: dict with keys 'R', 'f', 'npos';
+      values are tuples (date_str, value).
     - ndays: number of days from start_t to simulate.
     - R_ratio: ratio R_B117/R_old
     - Tg: generation interval (days)
     - R_changes: list of R-changes as tuples (date, R_scaling, label).
       For example: R_changes=[('2021-01-23', 0.8, 'Avondklok')]
-    - var_Rstart_Rratio_f: optional tuple (R_start_err, R_ratio_lo, R_ratio_hi, f_lo, f_hi)
-      e.g. (0.05, 1.4, 1.6, 0.3, 0.4).
+    - variations: optional dict with Monte-Carlo 2-sigma deviations;
+      keys: dR, fac_RR, fac_odds.
+    - country_select: selection preset (str) for which countries to show.
+      See get_data_countries() for details.
     """
 
     # Nominal start conditions and resulting simulation parameters.
     startcond_nom = dict(
-        start_t_R=start_t_R, req_t_f_npos=req_t_f_npos,
+        conditions=conditions,
         ndays=ndays, R_ratio=R_ratio, Tg=Tg, report_delay=report_delay,
         clip_nRo=clip_nRo, R_changes=R_changes, use_r7=use_r7
         )
 
     sim_kwargs_nom = get_sim_args_from_start_cond(**startcond_nom)
-    dR = var_Rstart_Rratio_f[0]
-    Rstart = start_t_R[1]
-
-    if var_Rstart_Rratio_f:
+    if variations:
         df_lohi = monte_carlo_runs(
             startcond_nom,
-            Rstart_ra=(Rstart-dR, Rstart+dR),
-            Rratio_ra=var_Rstart_Rratio_f[1:3],
-            f_ra=var_Rstart_Rratio_f[3:5]
+            **variations
             )
     else:
         df_lohi = None
@@ -425,44 +468,73 @@ def simulate_and_plot_alt(start_t_R=('2021-01-04', 0.85),
     simplot_kwargs = 'Rs,f0,title_prefix,date_ra,n0,clip_nRo,R_changes,use_r7'.split(',')
     simplot_kwargs = {k:v for (k,v) in sim_kwargs_nom.items() if k in simplot_kwargs}
 
-    simulate_and_plot(**simplot_kwargs, df_lohi=df_lohi,
-                      title_prefix=title_prefix.format(R=Rstart, start_date=start_t_R[0]))
+    title_prefix = title_prefix.format(
+        R=conditions['R'][1],
+        start_date=conditions['R'][0]
+        )
 
-def fit_log_odds(xs, ys):
-    """Fit ln(y) = a*x + b; assume larger relative errors for small y."""
+    simulate_and_plot(**simplot_kwargs, df_lohi=df_lohi,
+                      title_prefix=title_prefix,
+                      clip_nRo=clip_nRo,
+                      country_select=country_select
+                      )
+
+def fit_log_odds(xs, ys, last_weight=0.33):
+    """Fit ln(y) = a*x + b; assume larger relative errors for small y.
+
+    Optionally decrease weight of last point.
+    """
 
     # sigmas in ln(y). For Poisson statistics, exponent -0.5.
     sigmas = ys**-0.5
+    sigmas[-1] /= last_weight
+
+    sigmas += sigmas.max()
+
+
     a, b = np.polyfit(xs, np.log(ys), deg=1, w=1/sigmas)
     return a, b
 
 
 
-def plot_countries_odds_ratios(subtract_uk_bg=True):
-    cdict = get_data_countries(recent_only=True, uk_regions=True,
-                               subtract_uk_bg=subtract_uk_bg)
+
+def plot_countries_odds_ratios(subtract_eng_bg=True, country_select='all_recent',
+                               wiki=False):
+
+    cdict = get_data_countries(country_select, subtract_eng_bg=subtract_eng_bg)
 
     fig, ax = plt.subplots(tight_layout=True, figsize=(10, 5.5))
 
 
-    markers = iter('o^vs*Do^vs*D'*2)
+    markers = iter('o^vs*Do^vs*D'*4)
     colors = plt.rcParams['axes.prop_cycle']()
-    colors = iter([next(colors)['color'] for _ in range(20)])
-
+    colors = iter([next(colors)['color'] for _ in range(40)])
 
     tm0 = pd.to_datetime('2020-12-01')
     one_day = pd.Timedelta(1, 'd')
+
+    oddsfit_records = []
 
     for desc, df in cdict.items():
 
         odds = f2odds(df['f_b117']).values
         tms = df.index
-        xs = (tms - tm0) / one_day
+        xs = np.array((tms - tm0) / one_day)
 
         # early points and last point in each curve deviates from the 'trend by eye'.
         # Therefore, ignore them.
         ifirst = max(1, len(xs)-6)
-        oslope, odds0 = fit_log_odds(xs[ifirst:-1], odds[ifirst:-1])
+        oslope, odds0 = fit_log_odds(xs[ifirst:], odds[ifirst:], last_weight=0.33)
+
+        # show fit result
+        odds_latest = np.exp(odds0 + oslope * xs[-1])
+        tm_latest = tms[-1].strftime("%Y-%m-%d")
+        oddsfit_records.append(dict(
+            region=desc,
+            date=tm_latest,
+            odds=float('%.4g' % odds_latest),
+            log_slope=float('%.4g' % oslope)
+            ))
 
         xse = np.array([xs[0] - 3, xs[-1] + 3]) # expanded x range
         odds_fit = np.exp(oslope * xse + odds0)
@@ -473,89 +545,101 @@ def plot_countries_odds_ratios(subtract_uk_bg=True):
         ax.semilogy(tms, odds, f'{p}', color=col, label=label)
         ax.semilogy([tms[0]-3*one_day, tms[-1]+3*one_day], odds_fit, '-', color=col)
 
-    ax.set_ylabel('Odds ratio B117/other')
-    ax.legend(bbox_to_anchor=(1, 1))
+    odds_fit_df = pd.DataFrame.from_records(oddsfit_records).set_index('region')
+    print(f'Slope fit results:\n{odds_fit_df}')
+
+    # label 'today' in the graph
+    tm_now = pd.to_datetime('now')
+    tm_now += pd.Timedelta(12-tm_now.hour, 'h') # 12:00 noon
+
+    if not wiki:
+        ymax = ax.get_ylim()[1]
+        ax.axvline(tm_now, color='#888888')
+        ax.text(tm_now, ymax, tm_now.strftime('%d %b  '),
+                horizontalalignment='right', verticalalignment='top', rotation=90)
+
+    ax.set_ylabel('Odds ratio B.1.1.7/other')
+
+    add_percentage_y2_axis(ax)
+    ax.legend(bbox_to_anchor=(1.2, 1), fontsize=9)
+
 
     tools.set_xaxis_dateformat(ax)
     ax.set_title('B.1.1.7 presence in positive cases, with $\\log_e$ slopes')
     fig.canvas.set_window_title('B117 in countries/regions')
 
-    if subtract_uk_bg:
-        sgtf_subtracted = ' (Backgroud positive rate subtracted)'
+
+    if subtract_eng_bg:
+        sgtf_subtracted = ' (backgroud positive rate subtracted for England regions)'
     else:
         sgtf_subtracted = ''
-    ax.text(1.02, 0.07,
+    ax.text(1.10, -0.05 + 0.1 * (len(cdict) < 16),
             'UK data is based on population sampling\n'
             f'and mostly SGTF{sgtf_subtracted}.\n'
             'UK SGTF data shifted by 14 days to estimate symptom onset.\n'
-            'Sources: Walker et al., Imperial College, covid19genomics.dk,\n'
-            'RIVM NL, Borges et al.'
-            ,
-            transform=ax.transAxes)
+            'Other data is from genomic sequencing (\'seq\').\n'
+            'Sources: Walker et al., Imperial College, ons.gov.uk\n'
+            'covid19genomics.dk, RIVM NL, Borges et al., sciencetaskforce.ch.'
+            , transform=ax.transAxes, fontsize=9)
+
+    if not wiki:
+        fig.text(0.99, 0.01, '@hk_nien', fontsize=8,
+                 horizontalalignment='right', verticalalignment='bottom')
 
     fig.show()
-
-
-#%%
-
-
-
+    plt.pause(0.5)
 
 
 # cases for simulate_and_plot_alt:
 nl_alt_cases = dict(
-    nl_20201228=dict(
-        start_t_R=('2020-12-28', 0.94),
-        req_t_f_npos=('2021-01-04', 0.05, 7.7e3),
-        ndays=45, title_prefix='Extrapolatie vanaf R=0.94 op 28 jan; ',
-        clip_nRo=('2021-01-08', '2020-12-28', '2020-12-31')
-        ),
-    nl_20210104=dict(
-        start_t_R=('2021-01-04', 0.85),
-        req_t_f_npos=('2021-01-15', 0.09, 5.6e3),
-        ndays=45, title_prefix='Extrapolatie vanaf R=0.85 op 2021-01-04; ',
-        clip_nRo=('2021-01-16', '2021-01-05', '2021-01-10')
-        ),
-    nl_20210106=dict(
-        start_t_R=('2021-01-06', 0.86),
-        req_t_f_npos=('2021-01-17', 0.3, 5.2e3),
-        ndays=45, title_prefix='Extrapolatie vanaf R=0.86 op 2021-01-06; ',
-        clip_nRo=('2021-01-17', '2021-01-06', '2021-01-15')
-        ),
-    nl_20210108_ak=dict(
-        start_t_R=('2021-01-08', 0.91),
-        req_t_f_npos=('2021-01-20', 0.38, 5.2e3),
-        ndays=45, title_prefix='Extrapolatie vanaf R=0.91 op 2021-01-06; ',
-        # Don't clip.
-        clip_nRo=('2099', '2099', '2099'),
-        use_r7=False,
-        # OMT estimates -8% to -13% effect on Rt
-        # https://nos.nl/artikel/2365254-het-omt-denkt-dat-een-avondklok-een-flink-effect-heeft-waar-is-dat-op-gebaseerd.html
-        R_changes=[('2021-01-23', 0.9, 'Avondklok')],
+    nl_20210115=dict(
+        conditions=dict(
+            R=('2021-01-04', 0.85),
+            f=('2020-12-24', odds2f(0.024)),
+            npos=('2021-01-15', 5.6e3),
+            ),
+        R_ratio=1.6,
+        ndays=45, title_prefix='Extrapolatie vanaf R={R:.2f} zoals bekend op 15 jan; ',
+        clip_nRo=('2021-01-16', '2021-01-05', '2021-01-10'),
+        country_select='DK_SEE_20210101',
+        variations=dict(dR=0.03, fac_odds=1.2, fac_RR=1.077),
         ),
     nl_ak_20210121=dict(
-        start_t_R=('2021-01-10', 0.93), R_ratio=1.5,
-        req_t_f_npos=('2021-01-21', odds2f(0.30), 5.1e3),
-        ndays=45, title_prefix='Extrapolatie vanaf R={R:.2f} op {start_date}; ',
+        conditions=dict(
+            R=('2021-01-10', 0.93),
+            f=('2021-01-07', odds2f(0.112)),
+            npos=('2021-01-21', 5.1e3), # 7 days after R date
+            ),
+        R_ratio=1.5,
+        ndays=45, title_prefix='Extrapolatie vanaf R={R:.2f} zoals bekend op 21 jan; ',
         # Don't clip.
-        clip_nRo=('2099', '2099', '2099'),
-        use_r7=False,
+        clip_nRo=('2021-01-21', '2021-01-10', '2099'),
+        use_r7=True,
         # OMT estimates -8% to -13% effect on Rt
         # https://nos.nl/artikel/2365254-het-omt-denkt-dat-een-avondklok-een-flink-effect-heeft-waar-is-dat-op-gebaseerd.html
         R_changes=[('2021-01-23', 0.9, 'Avondklok')],
-        var_Rstart_Rratio_f=(0.03, 1.4, 1.6, odds2f(0.23), odds2f(0.37))
+        variations=dict(dR=0.03, fac_odds=1.2, fac_RR=1.077),
+        country_select='NL_DK_SEE_20210119'
         ),
     nl_ak_latest=dict(
-        start_t_R=('2021-01-13', 0.96), R_ratio=1.5,
-        req_t_f_npos=('2021-01-23', odds2f(0.3), 5.2e3),
+        conditions=dict(
+            R=('2021-01-19', 0.88),
+            f=('2021-01-08', 0.09),
+            npos=('2021-01-25', 4.8e3), # 7 days after R date
+            ),
+        R_ratio=1.40,
         ndays=45, title_prefix='Extrapolatie vanaf R={R:.2f} op {start_date}; ',
         # Don't clip.
         clip_nRo=('2099', '2099', '2099'),
-        use_r7=False,
+        use_r7=True,
         # OMT estimates -8% to -13% effect on Rt
         # https://nos.nl/artikel/2365254-het-omt-denkt-dat-een-avondklok-een-flink-effect-heeft-waar-is-dat-op-gebaseerd.html
-        R_changes=[('2021-01-23', 0.9, 'Avondklok')],
-        var_Rstart_Rratio_f=(0.03, 1.4, 1.6, odds2f(0.23), odds2f(0.37))
+        R_changes=[('2021-01-23', 0.9, 'Avondklok'),
+                   ('2021-02-08', 1.111, 'Basisscholen open'),
+                   ],
+        # variations=dict(dR=0.04, fac_odds=1.2, fac_RR=1.077),
+        variations=dict(dR=0.04, fac_odds=1.1, fac_RR=1.077),
+        country_select='picked'
         ),
     )
 
@@ -566,21 +650,14 @@ if __name__ == '__main__':
     plt.close('all')
     nlcs.init_data()
 
-    plot_countries_odds_ratios(subtract_uk_bg=True)
-    plot_countries_odds_ratios(subtract_uk_bg=False)
+    plot_countries_odds_ratios(subtract_eng_bg=True, country_select='all_recent')
 
-    #simulate_and_plot_alt(**nl_alt_cases['nl_20201228'])
-    #simulate_and_plot_alt(**nl_alt_cases['nl_20210106'])
+    ## effect of no background subtraction
+    # plot_countries_odds_ratios(subtract_eng_bg=False)
 
     simulate_and_plot_alt(**nl_alt_cases['nl_ak_latest'])
-
-    # simulate_and_plot(Rs=(0.85, 0.85*1.6), f0=0.01, title_prefix='Scenario 1: ')
-
-    # # This was wrong; matched the wrong curve
-    # # Extrapolating from test cases as of 2021-01-15
-    # simulate_and_plot(Rs=(0.82, 0.82*1.6), f0=0.09, title_prefix='Extrapolatie vanaf heden: ',
-    #                   date_ra=('2021-01-04', '2021-02-15'), n0=8e3
-    #                      )
-    #  simulate_and_plot(Rs=(0.8, 0.8*1.6), f0=0.15, title_prefix='Scenario 2 (horror): ')
-    # simulate_and_plot(Rs=(0.77, 0.77*1.6), f0=0.2, title_prefix='Scenario 3 (horror): ')
-
+    if 1: # set to 1/True to plot old data
+        pass
+        # simulate_and_plot_alt(**nl_alt_cases['nl_20201228'])
+        simulate_and_plot_alt(**nl_alt_cases['nl_ak_20210121'])
+        simulate_and_plot_alt(**nl_alt_cases['nl_20210115'])

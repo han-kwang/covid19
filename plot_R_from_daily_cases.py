@@ -15,5 +15,3 @@ if __name__ == '__main__':
     nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7')
     # nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=False)
     tools.pause_commandline()
-
-

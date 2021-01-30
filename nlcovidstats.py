@@ -920,10 +920,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
         # skip the first 10 days because of zeros
         Rt, delay_str = estimate_Rt_series(df1[source_col].iloc[10:], delay=delay, Tc=Tc)
         Rt = Rt.iloc[-ndays:]
-        if len(regions) == 1:
-            fmt = 'o'
-        else:
-            fmt = 'o-' if ndays < 70 else '-'
+        fmt = 'o'
         psize = 5 if ndays < 30 else 3
 
         if region.startswith('POP:'):
@@ -937,14 +934,16 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
 
         # add confidence range (ballpark estimate)
         print(region)
+
+        # Last 3 days are extrapolation, but peek at one extra day for the
+        # smooth curve generation.
+        # SG filter (13, 2): n=13 (2 weeks) will iron out all weekday effects
+        # remaining despite starting from a 7-day average.
+        Rt_smooth = scipy.signal.savgol_filter(Rt.iloc[:-2], 13, 2)[:-1]
+        Rt_smooth = pd.Series(Rt_smooth, index=Rt.index[:-3])
+        print(f'Smooth R: {Rt_smooth.iloc[-1]:.3g} @ {Rt_smooth.index[-1]}')
+
         if region == 'Nederland':
-            # Last 3 days are extrapolation, but peek at one extra day for the
-            # smooth curve generation.
-            # SG filter (13, 2): n=13 (2 weeks) will iron out all weekday effects
-            # remaining despite starting from a 7-day average.
-            Rt_smooth = scipy.signal.savgol_filter(Rt.iloc[:-2], 13, 2)[:-1]
-            Rt_smooth = pd.Series(Rt_smooth, index=Rt.index[:-3])
-            print(f'Smooth R: {Rt_smooth.iloc[-1]:.3g} @ {Rt_smooth.index[-1]}')
             # Error: hardcoded estimate 0.05. Because of SG filter, last 6 days
             # are increasingly less accurate.
             Rt_err = np.full(len(Rt_smooth), 0.05)
@@ -952,11 +951,12 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
             ax.fill_between(Rt_smooth.index,
                             Rt_smooth.values-Rt_err, Rt_smooth.values+Rt_err,
                             color=color, alpha=0.15, zorder=-10)
-            smooth_line = ax.plot(Rt_smooth[:-5], color=color, alpha=1, zorder=0,
-                                  label='R trend Nederland')
-            ax.plot(Rt_smooth[-6:], color=color, alpha=1, zorder=0,
-                    linestyle='--', dashes=(2,2))
-            mpl_cursor(smooth_line)
+        smooth_line = ax.plot(Rt_smooth[:-5], color=color, alpha=1, zorder=0,
+                              label=('R trend Nederland' if region=='Nederland' else None)
+                              )
+        ax.plot(Rt_smooth[-6:], color=color, alpha=1, zorder=0,
+                linestyle='--', dashes=(2,2))
+        mpl_cursor(smooth_line)
 
         labels.append((Rt[-1], f' {label}'))
 
