@@ -121,15 +121,18 @@ def _get_data_countries_weeknos():
             ('2021-W01-4', 0.119), # preliminary / calculation error (0.135???)
             ],
 
-        # https://www.tweedekamer.nl/sites/default/files/atoms/files/20210120_technische_briefing_commissie_vws_presentati_jaapvandissel_rivm_0.pdf
-        'NL (seq; 2021-01-20)': [
+        # Up to W53: https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id=2021Z00794&did=2021D02016
+        # W01: https://www.tweedekamer.nl/sites/default/files/atoms/files/20210120_technische_briefing_commissie_vws_presentati_jaapvandissel_rivm_0.pdf
+        # W02: https://www.tweedekamer.nl/downloads/document?id=00588209-3f6b-4bfd-a031-2d283129331c&title=98e%20OMT%20advies%20deel%201%20en%20kabinetsreactie.docx
+        'NL (seq; 2021-01-31)': [
             # Year-week-da, n_pos, f_b117
-            ('2020-W49-5', 0.015),
-            ('2020-W50-5', 0.010),
-            ('2020-W51-5', 0.015),
+            ('2020-W49-5', 0.011),
+            ('2020-W50-5', 0.007),
+            ('2020-W51-5', 0.011),
             ('2020-W52-5', 0.020),
             ('2020-W53-5', 0.050),
-            ('2021-W01-5', 0.090), # preliminary
+            ('2021-W01-5', 0.090),
+            ('2021-W02-5', 0.198),
             ],
         # https://virological.org/t/tracking-sars-cov-2-voc-202012-01-lineage-b-1-1-7-dissemination-in-portugal-insights-from-nationwide-rt-pcr-spike-gene-drop-out-data/600
         'PT (seq; 2021-01-19)': [

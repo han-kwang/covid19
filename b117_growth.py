@@ -136,7 +136,7 @@ def _fill_between_df(ax, df, col_lo, col_hi, **kwargs):
 
 
 def add_percentage_y2_axis(ax_o, label='Frequency B.1.1.7 (%)'):
-    """Add y2 axis with percentages on odds axis."""
+    """Add y2 axis with percentages on odds axis. Return new Axis."""
 
     ax_p = ax_o.twinx()
     olo, ohi = ax_o.get_ylim()
@@ -161,6 +161,7 @@ def add_percentage_y2_axis(ax_o, label='Frequency B.1.1.7 (%)'):
     ax_p.set_yticks(y2ticks, minor=False)
     ax_p.set_yticklabels(y2labels)
 
+    return ax_p
 
 
 
@@ -296,8 +297,6 @@ def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-1
     LogFormatter._num_to_string = lambda _0, x, _1, _2: ('%g' % x)
     ax.yaxis.set_minor_formatter(LogFormatter(minor_thresholds=(2, 1)))
 
-    add_percentage_y2_axis(ax, label='Aandeel B.1.1.7 (%)')
-
     title = f'{title_prefix}R_oud={Rs[0]:.2f};  R_B117={Rs[1]:.2f}'
     if R_changes:
         title += f'\n(R wijzigt vanaf {R_changes[0][0]})'
@@ -306,6 +305,9 @@ def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-1
     for i in range(3):
         tools.set_xaxis_dateformat(axs[i], maxticks=15, ticklabels=(i==2))
     fig.show()
+
+    add_percentage_y2_axis(ax, label='Aandeel B.1.1.7 (%)')
+
     plt.pause(0.75)
 
 class _StartCond:
@@ -560,11 +562,10 @@ def plot_countries_odds_ratios(subtract_eng_bg=True, country_select='all_recent'
 
     ax.set_ylabel('Odds ratio B.1.1.7/other')
 
+
+    tools.set_xaxis_dateformat(ax) # must be before adding a second y axis.
     add_percentage_y2_axis(ax)
     ax.legend(bbox_to_anchor=(1.2, 1), fontsize=9)
-
-
-    tools.set_xaxis_dateformat(ax)
     ax.set_title('B.1.1.7 presence in positive cases, with $\\log_e$ slopes')
     fig.canvas.set_window_title('B117 in countries/regions')
 
@@ -584,7 +585,8 @@ def plot_countries_odds_ratios(subtract_eng_bg=True, country_select='all_recent'
 
     if not wiki:
         fig.text(0.99, 0.01, '@hk_nien', fontsize=8,
-                 horizontalalignment='right', verticalalignment='bottom')
+                  horizontalalignment='right', verticalalignment='bottom')
+
 
     fig.show()
     plt.pause(0.5)
@@ -621,7 +623,7 @@ nl_alt_cases = dict(
         variations=dict(dR=0.03, fac_odds=1.2, fac_RR=1.077),
         country_select='NL_DK_SEE_20210119'
         ),
-    nl_ak_latest=dict(
+    nl_ak_20210130=dict(
         conditions=dict(
             R=('2021-01-19', 0.88),
             f=('2021-01-08', 0.09),
@@ -641,6 +643,27 @@ nl_alt_cases = dict(
         variations=dict(dR=0.04, fac_odds=1.1, fac_RR=1.077),
         country_select='picked'
         ),
+     nl_ak_latest=dict(
+        conditions=dict(
+            R=('2021-01-19', 0.88),
+            f=('2021-01-15', odds2f(0.2193)),
+            npos=('2021-01-25', 4.8e3), # 7 days after R date
+            ),
+        R_ratio=np.exp(0.105*4),
+        ndays=45, title_prefix='Extrapolatie vanaf R={R:.2f} op {start_date}; ',
+        # Don't clip.
+        clip_nRo=('2099', '2099', '2099'),
+        use_r7=True,
+        # OMT estimates -8% to -13% effect on Rt
+        # https://nos.nl/artikel/2365254-het-omt-denkt-dat-een-avondklok-een-flink-effect-heeft-waar-is-dat-op-gebaseerd.html
+        R_changes=[('2021-01-23', 0.9, 'Avondklok'),
+                   ('2021-02-08', 1.111, 'Basisscholen open'),
+                   ('2021-02-10', 1.111, 'Einde avondklok'),
+                   ],
+        # variations=dict(dR=0.04, fac_odds=1.2, fac_RR=1.077),
+        variations=dict(dR=0.04, fac_odds=1.1, fac_RR=1.077),
+        country_select='picked'
+        ),
     )
 
 
@@ -655,8 +678,8 @@ if __name__ == '__main__':
     ## effect of no background subtraction
     # plot_countries_odds_ratios(subtract_eng_bg=False)
 
-    simulate_and_plot_alt(**nl_alt_cases['nl_ak_latest'])
-    if 1: # set to 1/True to plot old data
+    1 and simulate_and_plot_alt(**nl_alt_cases['nl_ak_latest'])
+    if 0: # set to 1/True to plot old data
         pass
         # simulate_and_plot_alt(**nl_alt_cases['nl_20201228'])
         simulate_and_plot_alt(**nl_alt_cases['nl_ak_20210121'])

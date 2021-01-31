@@ -1048,7 +1048,7 @@ def load_data_cache(fname, maxageh=1):
         return df
 
 
-def get_reporting_delay(df, initial_delay=7, end_trunc=4, start_trunc=5, plot=True):
+def get_reporting_delay(df, initial_delay=7, end_trunc=4, start_trunc=5, plot=True, m=18):
 
     """Estimate delay from DOO (eDOO) to file_date.
 
@@ -1062,6 +1062,7 @@ def get_reporting_delay(df, initial_delay=7, end_trunc=4, start_trunc=5, plot=Tr
     - start_trunc: how many dates to truncate at the beginning
       of the delay data.
     - plot: whether to show plot of the data.
+    - m: days to wait for reports to converge.
 
     Return:
 
@@ -1074,7 +1075,6 @@ def get_reporting_delay(df, initial_delay=7, end_trunc=4, start_trunc=5, plot=Tr
     # Estimate is corrected for partial reporting but not for day-of-week
     # effects. Statsitics based on most recent m=18 days.
     fdates = np.array(sorted(df.index.get_level_values(0).unique()))
-    m = 18 # after this many days, consider reports converged.
     fdrange = ('2020-07-01', fdates[-1])
     doo_corr = DOOCorrection.from_doo_df(
             df, date_range=fdrange, m=m,

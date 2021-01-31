@@ -995,6 +995,9 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
                  f'[{source}]')
     ax.set_ylabel('Reproductiegetal $R_t$')
 
+    # setup the x axis before adding y2 axis.
+    tools.set_xaxis_dateformat(ax, maxticks=10)
+
     # get second y axis
     ax2 = ax.twinx()
     T2s = np.array([-2, -4,-7, -10, -14, -21, -60, 9999, 60, 21, 14, 10, 7, 4, 2])
@@ -1014,7 +1017,6 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
             rotation=90)
 
     ax.legend(loc='upper center')
-    tools.set_xaxis_dateformat(ax, maxticks=10)
 
     fig.canvas.set_window_title(f'Rt ({", ".join(regions)[:30]}, ndays={ndays})')
     fig.show()
