@@ -320,7 +320,7 @@ def get_dow_correction(dayrange=(-50, -1), verbose=False):
     """
 
     dayrange = tuple(dayrange)
-    if dayrange in _DOW_CORR_CACHE:
+    if dayrange in _DOW_CORR_CACHE and not verbose:
         return _DOW_CORR_CACHE[dayrange].copy()
 
     # timestamp index, columns Delta, Delta7r, and others.
@@ -879,10 +879,9 @@ def plot_anomalies_deltas(ndays=120):
     fig.show()
 
 
-def plot_Rt(ndays=100, lastday=-1, delay=9,
-            regions='Nederland', source='r7',
+def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
             Tc=4.0, correct_anomalies=True):
-    """Plot daily-case trends.
+    """Plot R number based on growth/shrink in daily cases.
 
     - lastday: use case data up to this day.
     - delay: assume delay days from infection to positive report.
@@ -930,7 +929,8 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
         else:
             label = re.sub('^[A-Z]+:', '', region)
 
-        ax.plot(Rt, fmt, label=label, markersize=psize, color=color)
+        ax.plot(Rt[:-3], fmt, label=label, markersize=psize, color=color)
+        ax.plot(Rt[-3:], fmt, label=label, markersize=psize, color=color, alpha=0.35)
 
         # add confidence range (ballpark estimate)
         print(region)
@@ -951,6 +951,21 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
             ax.fill_between(Rt_smooth.index,
                             Rt_smooth.values-Rt_err, Rt_smooth.values+Rt_err,
                             color=color, alpha=0.15, zorder=-10)
+
+            # This is for posting on Twitter
+            Rt_smooth_latest = Rt_smooth.iloc[-1]
+            Rt_point_latest = Rt.iloc[-4]
+            date_latest = Rt.index[-4].strftime('%d %b')
+            slope = (Rt_smooth.iloc[-1] - Rt_smooth.iloc[-4])/3
+            if abs(Rt_smooth_latest - Rt_point_latest) < 0.015:
+                txt = f'R={(Rt_smooth_latest+Rt_point_latest)/2:.2f}'
+            else:
+                txt = (f'R={Rt_smooth_latest:.2f} (datapunt), '
+                       f'R={Rt_point_latest:.2f} (voorlopige trendlijn)')
+            print(f'Update reproductiegetal Nederland t/m {date_latest}: {txt}.'
+                  f' Trend: {"+" if slope>=0 else "−"}{abs(slope):.3f} per dag.')
+
+
         smooth_line = ax.plot(Rt_smooth[:-5], color=color, alpha=1, zorder=0,
                               label=('R trend Nederland' if region=='Nederland' else None)
                               )
@@ -1020,6 +1035,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9,
 
     fig.canvas.set_window_title(f'Rt ({", ".join(regions)[:30]}, ndays={ndays})')
     fig.show()
+
 
 def plot_Rt_oscillation():
     """Uses global DFS['Rt_rivm'] variable."""

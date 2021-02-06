@@ -48,7 +48,7 @@ def set_xaxis_dateformat(ax, xlabel=None, maxticks=10, yminor=False, ticklabels=
         ax.xaxis.set_minor_locator(monday_locator)
         ax.tick_params('x', which='minor', direction='in')
         fmt = '%Y-%m-%d'
-        if day_span <= maxticks*15:
+        if day_span <= maxticks*25:
             minor_grid = True
     else:
         ax.xaxis.set_major_locator(md.MonthLocator([1, 4, 7, 10]))
@@ -57,12 +57,12 @@ def set_xaxis_dateformat(ax, xlabel=None, maxticks=10, yminor=False, ticklabels=
         minor_grid = (day_span < maxticks*90)
 
 
-    ax.grid(which='major', axis='both', color='#aaaaaa')
+    ax.grid(which='major', axis='both', color='black', alpha=0.2)
     if minor_grid:
-        ax.grid(which='minor', axis='x', color='#dddddd')
+        ax.grid(which='minor', axis='x', color='black', alpha=0.1)
 
     if yminor:
-        ax.grid(which='minor', axis='y', color='#dddddd')
+        ax.grid(which='minor', axis='y', color='black', alpha=0.1)
 
     # ax.grid(which=('both' if minor_grid else 'major'))
 
