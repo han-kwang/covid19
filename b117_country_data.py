@@ -40,6 +40,27 @@ def _convert_ywd_records(records, colnames=('f_b117',)):
     return df
 
 
+def _add_meta_record(reclist, desc, mdict, refs):
+    """Add record to reclist; record is a dict with keys:
+
+        desc=desc,
+        **mdict,
+        refs->tuple of URLs
+
+    mdict['date'] will be converted to DateTime object.
+    """
+    refs = tuple(refs)
+
+    rec = {'desc': desc,
+           **mdict,
+           'refs': refs,
+           }
+
+    if 'date' in rec:
+        rec['date'] = pd.to_datetime(rec['date'])
+
+    reclist.append(rec)
+
 def _get_data_uk_genomic():
 
     # https://twitter.com/hk_nien/status/1344937884898488322
@@ -47,6 +68,8 @@ def _get_data_uk_genomic():
     # data points read from plot (as ln prevalence)
     seedata = {
         '2020-12-21': [
+            dict(date='2020-12-21', is_recent=False, is_seq=True, en_part='South East England'),
+            ['https://t.co/njAXPsVlvb?amp=1'],
             ['2020-09-25', -4.2*1.25],
             ['2020-10-02', -3.5*1.25],
             ['2020-10-15', -3.2*1.25],
@@ -58,7 +81,9 @@ def _get_data_uk_genomic():
             ['2020-11-27', 0.8*1.25]
             ],
         '2020-12-31': [
-            # https://www.imperial.ac.uk/media/imperial-college/medicine/mrc-gida/2020-12-31-COVID19-Report-42-Preprint-VOC.pdf
+            dict(date='2020-12-31', is_recent=True, is_seq=True, en_part='South East England'),
+            ['https://www.imperial.ac.uk/media/imperial-college/medicine/mrc-gida/2020-12-31-COVID19-Report-42-Preprint-VOC.pdf'
+             ],
             ['2020-10-31', -2.1],
             ['2020-11-08', -1.35],
             ['2020-11-15', -0.75],
@@ -68,51 +93,58 @@ def _get_data_uk_genomic():
         }
 
     cdict = {}
+    meta_records = []
     for report_date, records in seedata.items():
-        df = pd.DataFrame.from_records(records, columns=['Date', 'ln_odds'])
+        df = pd.DataFrame.from_records(records[2:], columns=['Date', 'ln_odds'])
         df['Date'] = pd.to_datetime(df['Date'])
         odds = np.exp(df['ln_odds'])
         df['f_b117'] = odds / (1 + odds)
         df = df[['Date', 'f_b117']].set_index('Date')
+        desc = f'South East England (seq, {report_date})'
+        cdict[desc] = df
+        _add_meta_record(meta_records, desc, records[0], records[1])
 
-        cdict[f'South East England (seq, {report_date})'] = df
-
-    return cdict
+    return cdict, meta_records
 
 
 
 def _get_data_countries_weeknos():
-    """Countries with f_117 data by week number."""
+    """Countries with f_117 data by week number.
 
+    Return dataframe with metadata and dict of dataframes.
+    """
+
+
+    # All country records are ('{year}-W{weekno}-{weekday}', fraction_b117)
+    # Item 0 in each list: metadata
+    # Item 1 in each list: source URLs
     country_records = {
-        # https://covid19.ssi.dk/-/media/cdn/files/opdaterede-data-paa-ny-engelsk-virusvariant-sarscov2-cluster-b117--01012021.pdf?la=da
         'DK (seq; 2021-01-01)': [
-            # Year-week-da, n_pos, f_b117
+            dict(ccode='DK', date='2021-01-01', is_seq=True, is_recent=False),
+            ['https://covid19.ssi.dk/-/media/cdn/files/opdaterede-data-paa-ny-engelsk-virusvariant-sarscov2-cluster-b117--01012021.pdf?la=da'],
             ('2020-W49-4', 0.002),
             ('2020-W50-4', 0.005),
             ('2020-W51-4', 0.009),
             ('2020-W52-4', 0.023)
             ],
-        # https://www.covid19genomics.dk/statistics
-        'DK (seq; 2021-01-26)': [
-            # Year-week-da, n_pos, f_b117
+        'DK (seq; 2021-02-05)': [
+            dict(ccode='DK', date='2021-02-05', is_seq=True, is_recent=True),
+            ['https://www.covid19genomics.dk/statistics'],
             ('2020-W48-4', 0.002),
             ('2020-W49-4', 0.002),
             ('2020-W50-4', 0.004),
             ('2020-W51-4', 0.008),
             ('2020-W52-4', 0.020),
             ('2020-W53-4', 0.024),
-            ('2021-W01-4', 0.040),
-            ('2021-W02-4', 0.074),
-            ('2021-W03-4', 0.121), # preliminary# preliminary
+            ('2021-W01-4', 0.040), # last updated 2021-02-05
+            ('2021-W02-4', 0.075),
+            ('2021-W03-4', 0.128),
+            ('2021-W04-4', 0.191), # last updated 2021-02-05
             ],
-
-        # OMT advies #96
-        # https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id=2021Z00794&did=2021D02016
-        # https://www.rivm.nl/coronavirus-covid-19/omt (?)
-
         'NL (seq; 2021-01-19; OMT)': [
-            # Year-week-da, n_pos, f_b117
+            dict(ccode='NL', date='2021-01-01', is_seq=True, is_recent=False),
+            ['https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id=2021Z00794&did=2021D02016',
+             'https://www.rivm.nl/coronavirus-covid-19/omt'],
             ('2020-W49-4', 0.011),
             ('2020-W50-4', 0.007),
             ('2020-W51-4', 0.011),
@@ -120,22 +152,42 @@ def _get_data_countries_weeknos():
             ('2020-W53-4', 0.052),
             ('2021-W01-4', 0.119), # preliminary / calculation error (0.135???)
             ],
-
-        # Up to W53: https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id=2021Z00794&did=2021D02016
-        # W01: https://www.tweedekamer.nl/sites/default/files/atoms/files/20210120_technische_briefing_commissie_vws_presentati_jaapvandissel_rivm_0.pdf
-        # W02: https://www.tweedekamer.nl/downloads/document?id=00588209-3f6b-4bfd-a031-2d283129331c&title=98e%20OMT%20advies%20deel%201%20en%20kabinetsreactie.docx
         'NL (seq; 2021-01-31)': [
-            # Year-week-da, n_pos, f_b117
-            ('2020-W49-5', 0.011),
+            dict(ccode='NL', date='2021-01-31', is_seq=True, is_recent=True),
+            ['https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id=2021Z00794&did=2021D02016',
+             'https://www.tweedekamer.nl/sites/default/files/atoms/files/20210120_technische_briefing_commissie_vws_presentati_jaapvandissel_rivm_0.pdf',
+             'https://www.tweedekamer.nl/downloads/document?id=00588209-3f6b-4bfd-a031-2d283129331c&title=98e%20OMT%20advies%20deel%201%20en%20kabinetsreactie',
+             ],
+            ('2020-W49-5', 0.011), # OMT #96 >>
             ('2020-W50-5', 0.007),
             ('2020-W51-5', 0.011),
             ('2020-W52-5', 0.020),
-            ('2020-W53-5', 0.050),
-            ('2021-W01-5', 0.090),
-            ('2021-W02-5', 0.198),
+            ('2020-W53-5', 0.050), # << OMT #96
+            ('2021-W01-5', 0.090), # TK briefing (read from figure ±0.005)
+            ('2021-W02-5', 0.198), # OMT #98 (31 Jan)
             ],
-        # https://virological.org/t/tracking-sars-cov-2-voc-202012-01-lineage-b-1-1-7-dissemination-in-portugal-insights-from-nationwide-rt-pcr-spike-gene-drop-out-data/600
+        'UK (seq; 2021-01-21)': [
+            dict(ccode='UK', date='2021-01-21', is_seq=True, is_recent=True),
+            ['https://www.ecdc.europa.eu/sites/default/files/documents/COVID-19-risk-related-to-spread-of-new-SARS-CoV-2-variants-EU-EEA-first-update.pdf',
+            ],
+            # Fig. 2. (traced, +/- 0.001 accuracy)
+            ('2020-W43-4', 0.003),
+            ('2020-W44-4', 0.008),
+            ('2020-W45-4', 0.026),
+            ('2020-W46-4', 0.063),
+            ('2020-W47-4', 0.108),
+            ('2020-W48-4', 0.101),
+            ('2020-W49-4', 0.140),
+            ('2020-W50-4', 0.333),
+            ('2020-W51-4', 0.483),
+            ('2020-W52-4', 0.539),
+            ('2020-W53-4', 0.693),
+            # ('2021-W01-4', ...),
+            ],
         'PT (seq; 2021-01-19)': [
+            dict(ccode='PT', date='2021-01-19', is_seq=True, is_recent=True),
+            ['https://virological.org/t/tracking-sars-cov-2-voc-202012-01-lineage-b-1-1-7-dissemination-in-portugal-insights-from-nationwide-rt-pcr-spike-gene-drop-out-data/600',
+             ],
             ('2020-W49-4', 0.019),
             ('2020-W50-4', 0.009),
             ('2020-W51-4', 0.013),
@@ -144,22 +196,45 @@ def _get_data_countries_weeknos():
             ('2021-W01-4', 0.074),
             ('2021-W02-4', 0.133),
             ],
-        # https://sciencetaskforce.ch/nextstrain-phylogentische-analysen/
         'CH (seq; 2021-01-26)': [
+            dict(ccode='CH', date='2021-01-26', is_seq=True, is_recent=True),
+            ['https://sciencetaskforce.ch/nextstrain-phylogentische-analysen/'],
             ('2020-W51-4', 0.0004),
             ('2020-W52-4', 0.0043),
             ('2020-W53-4', 0.0074),
             ('2021-W01-4', 0.0153),
             ('2021-W02-4', 0.0329),
-            ('2021-W03-4', 0.0989),
+            ('2021-W03-4', 0.0881),
+            ('2021-W04-4', 0.1717), # last updated ca. 2021-02-05
             ],
+        # https://assets.gov.ie/121054/55e77ccd-7d71-4553-90c9-5cd6cdee7420.pdf (p. 53) up to wk 1
+        # https://assets.gov.ie/121662/184e8d00-9080-44aa-af74-dbb13b0dcd34.pdf (p. 2, bullet 8) wk 2/3
+        'IE (SGTF; 2021-01-28)': [
+            dict(ccode='IE', date='2021-01-28', is_seq=False, is_sgtf=True, is_recent=True),
+            ['https://assets.gov.ie/121054/55e77ccd-7d71-4553-90c9-5cd6cdee7420.pdf', # (p. 53) up to wk 1
+             'https://assets.gov.ie/121662/184e8d00-9080-44aa-af74-dbb13b0dcd34.pdf', # (p. 2, bullet 8) wk 2/3
+             ],
+            ('2020-W50-4', 0.014),
+            ('2020-W51-4', 0.086),
+            ('2020-W52-4', 0.163),
+            ('2020-W53-4', 0.262),
+            ('2021-W01-4', 0.463), # 21 Jan
+            ('2021-W02-4', 0.58),
+            ('2021-W03-4', 0.63), # 28 Jan
+            ]
         }
 
     cdict = {}
+    meta_records = []
     for desc, records in country_records.items():
-        cdict[desc] = _convert_ywd_records(records, ['f_b117'])
+        cdict[desc] = _convert_ywd_records(records[2:], ['f_b117'])
+        _add_meta_record(meta_records, desc, records[0], records[1])
 
-    return cdict
+    return cdict, meta_records
+
+
+#%%
+
 
 regions_pop = {
     'South East England': 9180135,
@@ -199,7 +274,8 @@ def _get_data_England_regions(subtract_bg=True):
     for col in ncolumns:
         df_combi[col] = 0
 
-    cdict = {'England (SGTF; multiple regions; 2021-01-15)': df_combi}
+    pub_date = '2021-01-15'
+    cdict = {f'England (SGTF; multiple regions; {pub_date})': df_combi}
     for fpath in sorted(Path('data').glob('uk_*_b117_pop.csv')):
         ma = re.search('uk_(.*)_b117', str(fpath))
         region = ma.group(1).replace('_', ' ')
@@ -216,14 +292,14 @@ def _get_data_England_regions(subtract_bg=True):
         for col in ncolumns:
             df_combi[col] += df2[col]
 
-        cdict[f'{region} (SGTF; 2021-01-15)'] = df
+        cdict[f'{region} (SGTF; {pub_date}'] = df
 
     # convert to estimated new cases per day.
     for key, df in cdict.items():
 
         region = re.match(r'(.*) \(.*', key).group(1)
         if region == 'England':
-            region = 'England (multiple regions; 2021-01-15)'
+            region = f'England (multiple regions; {pub_date})'
 
         # estimate false-positive for SGTF as representing B.1.1.7
         if subtract_bg:
@@ -255,31 +331,52 @@ def _get_data_England_regions(subtract_bg=True):
         df['or_b117'] = df['n_b117'] / df['n_oth']
         df['f_b117'] = df['or_b117']/(1 + df['or_b117'])
 
+
     for col in ncolumns + ['n_pos']:
         df_combi[col] = np.around(df_combi[col], 0).astype(int)
 
-    return cdict
+    meta_records = []
+    for desc in cdict.keys():
+        region = re.match('(.*) \(', desc).group(1)
+        record = dict(
+            desc=desc,
+            date=pd.to_datetime(pub_date),
+            en_part=region,
+            is_recent=True,
+            is_seq=False,
+            is_sgtf=True,
+            refs=('https://doi.org/10.1101/2021.01.13.21249721',)
+            )
+        meta_records.append(record)
+
+    return cdict, meta_records
 
 
 
 def load_uk_ons_gov_country_by_var():
-    """Return DataFrame based on data/ons_gov_uk_country_by_var.xlsx.
+    """Get data based on data/ons_gov_uk_country_by_var.xlsx.
 
-    Also return date string for publication date.
+    Return:
 
-    index: Date.
-    columns: {country_name}:{suffix}
+    - dataframe
+    - date_pub
+    - tuple of source URLs
+
+    Dataframe layout:
+
+    - index: Date.
+    - columns: {country_name}:{suffix}
 
     with suffix = 'pnew', 'pnew_lo', 'pnew_hi', 'poth', ..., 'pnid', ...
 
     for percentages new UK variant, CI low, CI high,
     other variant, not-identified.
-
-    Data source:
-
-    - https://www.ons.gov.uk/peoplepopulationandcommunity/healthandsocialcare/conditionsanddiseases/bulletins/coronaviruscovid19infectionsurveypilot/29january2021#positive-tests-that-are-compatible-with-the-new-uk-variant
-    - https://www.ons.gov.uk/visualisations/dvc1163/countrybyvar/datadownload.xlsx
     """
+
+    refs = [
+        'https://www.ons.gov.uk/peoplepopulationandcommunity/healthandsocialcare/conditionsanddiseases/bulletins/coronaviruscovid19infectionsurveypilot/29january2021#positive-tests-that-are-compatible-with-the-new-uk-variant',
+        'https://www.ons.gov.uk/visualisations/dvc1163/countrybyvar/datadownload.xlsx',
+        ]
 
     # Excel sheet: groups of 9 columns by country (England, Wales, NI, Scotland).
     xls_fname = 'data/ons_gov_uk_country_by_var.xlsx'
@@ -314,7 +411,7 @@ def load_uk_ons_gov_country_by_var():
     else:
         raise ValueError('Please check publication date')
 
-    return df, date_pub
+    return df, date_pub, refs
 
 def _get_data_uk_countries_ons():
     """Data for UK countries based on PCR (SGTF, N-gege, ...)
@@ -327,7 +424,7 @@ def _get_data_uk_countries_ons():
     # https://www.ons.gov.uk/peoplepopulationandcommunity/healthandsocialcare/conditionsanddiseases/bulletins/coronaviruscovid19infectionsurveypilot/29january2021#positive-tests-that-are-compatible-with-the-new-uk-variant
     # https://www.ons.gov.uk/visualisations/dvc1163/countrybyvar/datadownload.xlsx
     """
-    df, pub_date = load_uk_ons_gov_country_by_var()
+    df, pub_date, refs = load_uk_ons_gov_country_by_var()
 
     c_names = ['England', 'Wales', 'Northern Ireland', 'Scotland']
     c_names = {cn: cn for cn in c_names}
@@ -336,6 +433,7 @@ def _get_data_uk_countries_ons():
     shifted_dates = df.index - pd.Timedelta(14, 'd')
 
     cdict = {}
+    meta_records = []
 
     # combined data for entire UK
     df_uk = pd.DataFrame(index=shifted_dates, data=dict(nnew=0., noth=0.))
@@ -358,7 +456,17 @@ def _get_data_uk_countries_ons():
         # (don't trust the last few points)
         n = len(cdf)
         cdf = cdf.iloc[(n-3)%7::7]
-        cdict[f'{c_names[cn]} (SGTF; {pub_date})'] = cdf
+        desc = f'{c_names[cn]} (SGTF; {pub_date})'
+        cdict[desc] = cdf
+
+        meta_records.append(dict(
+            desc=desc,
+            date=pd.to_datetime(pub_date),
+            uk_part=cn,
+            is_seq=False,
+            is_sgtf=True,
+            refs=refs,
+            ))
 
 
     df_uk = df_uk.iloc[(len(df_uk)-3)%7::7]
@@ -367,90 +475,15 @@ def _get_data_uk_countries_ons():
 
     cdict[f'UK (SGTF; {pub_date})'] = df_uk
 
-    return cdict
+    return cdict, meta_records
 
 
-def get_ckeys_metadata(cdict):
-    """Return dataframe with metadata for per-country data.
-
-    Parameters:
-
-    - cdict: dict (or set, list) with keys such as
-      'NL (seq; 2021-01-20)'.
-
-    Return:
-
-    - DataFrame with columns:
-     key, date, ccode, uk_part, en_part, is_seq, is_sgtf.
-
-    """
-    ## Typical keys can look like this:
-    # 'England (SGTF; multiple regions)',
-    # 'East Midlands (SGTF)',
-    # 'England (SGTF; 2021-01-29)',
-    # 'N. Ireland (SGTF; 2021-01-29)',
-    # 'Scotland (SGTF; 2021-01-29)',
-    # 'South East England (seq, 2...',
-    # 'UK (SGTF; 2021-01-29)',
-    # 'DK (seq; 26 jan)',
-    # 'NL OMT-advies #96',
-    # 'NL (seq; 2021-01-20)',
-    # 'PT (seq; 19 jan)',
-    # 'CH (seq; 26 jan)'
-
-    # Store dict keys into dataframe.
-    records = []
-    for key in cdict.keys():
-        m = re.search('202.-..-..', key)
-        if m:
-            date = m.group(0)
-        else:
-            date = None
-
-        m = re.match('([A-Z][A-Z])', key)
-        if m:
-            ccode = m.group(1)
-        else:
-            ccode = None
-
-        m = re.match('(England|Wales|N. Ireland|Scotland) \(SGTF; 202', key)
-        if m:
-            uk_part = m.group(1)
-        else:
-            uk_part = None
-
-        if ccode or uk_part:
-            en_part = None
-        else:
-            m1 = re.match('(.*) \(SGTF', key)
-            m2 = re.match('(South East England) \(seq', key)
-            if m1:
-                date = '2021-01-19'
-                en_part = m1.group(1)
-            elif m2:
-                en_part = m2.group(1)
-            else:
-                raise ValueError(f'key={key}: how to categorize?')
-
-
-        is_seq = 'seq' in key
-        is_sgtf = 'SGTF' in key
-
-        records.append(dict(
-            key=key, date=date, ccode=ccode, uk_part=uk_part,
-            en_part=en_part, is_seq=is_seq, is_sgtf=is_sgtf
-            ))
-
-    df = pd.DataFrame.from_records(records).set_index('key')
-    return df
-
-
-def filter_countries(cdict, select):
+def filter_countries(cdict, meta_df, select):
     """Select countries to display.
 
     - cdict: dict, key=region, value=dataframe.
+    - meta_df: dataframe with metadata (columns ccode, is_recent, etc.).
     - select: selection preset str or comma-separated str.
-
 
         - all: everything (a lot)
         - all_recent: almost everything
@@ -462,27 +495,21 @@ def filter_countries(cdict, select):
         - None: equivalent to 'picked'.
         - NL_DK_SEE_20210119: data from NL, DK, SEE available on 19 Jan
         - DK_SEE_20210101: data from DK, SEE available on 1 Jan
-    """
 
-    df = get_ckeys_metadata(cdict)
+    Return:
+
+    - cdict: selected cdict
+    - meta_df: subset of original meta_df dataframe
+    """
+    df = meta_df
 
     # build a couple of selections (list of keys)
     countries = []
-    for ccode in df.loc[~df['ccode'].isna(), 'ccode'].unique():
-        countries.append(df.loc[df['ccode'] == ccode].iloc[-1].name)
-
-    uk_parts = list(df.loc[~df['uk_part'].isna()].index)
-    eng_parts = [x
-                 for x in df.loc[~df['en_part'].isna()].index
-                 if not 'seq, 2020-12-21' in x # older sequencing data
-                 ]
-
-    # all except duplicates for the same region.
-    regions_seen = {} # key: (ccode, uk_part, en_part), value=(date, key)
-    for i in range(len(df)):
-        tup = tuple(df.iloc[i][['ccode', 'uk_part', 'en_part']])
-        regions_seen[tup] = (df.iloc[i]['date'], df.index[i])
-    all_recent = [k for _date, k in regions_seen.values()]
+    countries = list(df.index[~df['ccode'].isna() & df['is_recent']])
+    uk_national = list(df.index[(df['ccode']=='UK')])
+    uk_parts = list(df.index[~df['uk_part'].isna()])
+    eng_parts = list(df.index[~df['en_part'].isna() & df['is_recent']]) # TODO: CHECK @@
+    all_recent = list(df.index[df['is_recent']])
 
     keys = []
     if select is None:
@@ -492,6 +519,8 @@ def filter_countries(cdict, select):
             keys += countries
         elif sel == 'countries_uk':
             keys += (countries + uk_parts)
+        elif sel == 'uk':
+            keys += uk_national + uk_parts + eng_parts
         elif sel == 'uk_parts':
             keys += uk_parts
         elif sel == 'eng_parts':
@@ -512,12 +541,15 @@ def filter_countries(cdict, select):
             keys += countries + uk_parts + [
                 'England (SGTF; multiple regions; 2021-01-15)', 'South East England (seq, 2020-12-31)'
                 ]
-
-
         else:
             raise KeyError(f'selection {sel!r}')
 
-    return {k:cdict[k] for k in keys}
+    keys = df.loc[keys].index.unique()
+    new_cdict = {k:cdict[k] for k in keys}
+    new_mdf = df.loc[keys]
+
+    return new_cdict, new_mdf
+
 
 def get_data_countries(select=None, subtract_eng_bg=True):
     """Return dict, key=description, value=dataframe with Date, n_pos, f_b117, or_b117.
@@ -526,14 +558,38 @@ def get_data_countries(select=None, subtract_eng_bg=True):
     - select: optional selection.
     """
 
-    cdict_eng = _get_data_England_regions(subtract_bg=subtract_eng_bg)
+    cdicts_and_records = [
+        # each entry is a tuple (cdict, meta_records)
+        _get_data_countries_weeknos(),
+        _get_data_uk_genomic(),
+        _get_data_uk_countries_ons(),
+        _get_data_England_regions(subtract_bg=subtract_eng_bg),
+        ]
 
-    cdict = {
-        **_get_data_countries_weeknos(),
-        **cdict_eng,
-        **_get_data_uk_genomic(), # this is now covered by cdict_uk
-        **_get_data_uk_countries_ons(),
-        }
+    cdict = {}
+    meta_records = [] # list of dicts
+    for cd, rs in cdicts_and_records:
+        cdict.update(cd)
+        meta_records.extend(rs)
 
-    return filter_countries(cdict, select)
+    meta_df = pd.DataFrame.from_records(meta_records).set_index('desc')
 
+    # refs column should be the final column
+    columns = ['ccode', 'date', 'is_seq', 'is_sgtf', 'is_recent', 'en_part', 'uk_part', 'refs']
+    columns.extend(set(meta_df.columns).difference(columns)) # just in case
+
+    meta_df = meta_df[columns]
+
+    # cleanup columns (NaN values etc).
+    for c in list(meta_df.columns):
+        if c.startswith('is_'):
+            meta_df[c] = (meta_df[c] == True)
+        elif meta_df[c].dtype == 'O':
+            meta_df.loc[meta_df[c].isna(), c] = None
+
+    return filter_countries(cdict, meta_df, select)
+
+
+if __name__ == '__main__':
+    # just for testing
+    cdict, mdf = get_data_countries('picked')

@@ -6,15 +6,17 @@ Created on Fri Jan  8 18:01:37 2021
 
 @author: @hk_nien
 """
-
+import locale
 import numpy as np
 import scipy.optimize
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.ticker import LogFormatter, FormatStrFormatter
 import scipy.signal
 import tools
 import nlcovidstats as nlcs
 from b117_country_data import get_data_countries
+
 
 def simulate_cases(date_ra=('2020-12-18', '2021-02-15'),
                    Rs=(0.88, 0.88*1.6), f0=0.01, Tg = 4.0,
@@ -135,7 +137,7 @@ def _fill_between_df(ax, df, col_lo, col_hi, **kwargs):
                     **kwargs)
 
 
-def add_percentage_y2_axis(ax_o, label='Frequency B.1.1.7 (%)'):
+def add_percentage_y2_axis(ax_o, label='Frequency B.1.1.7/all positive samples (%)'):
     """Add y2 axis with percentages on odds axis. Return new Axis."""
 
     ax_p = ax_o.twinx()
@@ -146,7 +148,7 @@ def add_percentage_y2_axis(ax_o, label='Frequency B.1.1.7 (%)'):
     ax_p.set_yscale('log')
     ax_p.minorticks_off()
 
-    pvals = np.array([0.001, 0.01, 0.1, 1, 10, 30, 60, 80,
+    pvals = np.array([0.001, 0.01, 0.1, 1, 10, 25, 50, 75,
                       90, 95, 98, 99, 99.5, 99.8,
                       99.9, 99.95, 99.98, 99.99
                       ])
@@ -193,8 +195,6 @@ def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-1
 
     colors = plt.rcParams['axes.prop_cycle']()
     colors = [next(colors)['color'] for _ in range(10)]
-
-    from matplotlib.ticker import LogFormatter, FormatStrFormatter
 
 
     fig, axs = plt.subplots(3, 1, tight_layout=True, sharex=True, figsize=(9, 10))
@@ -261,7 +261,6 @@ def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-1
         ax.text(pd.to_datetime(date), 0.82, label, rotation=90,
             horizontalalignment='center')
 
-
     ax.grid(zorder=0)
     ax.legend()
 
@@ -279,8 +278,8 @@ def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-1
 
 
     markers = iter('o^vs*Do^vs*D'*2)
-    cdict = get_data_countries(select=country_select).items()
-    for country_name, df in cdict:
+    cdict, _meta_df = get_data_countries(select=country_select)
+    for country_name, df in cdict.items():
         df = df.loc[df.index <= clip_nRo[2]]
         marker = next(markers)
         label = country_name if len(country_name) < 25 else country_name[:23] + '...'
@@ -304,10 +303,11 @@ def simulate_and_plot(Rs, f0, title_prefix='', date_ra=('2020-12-18', '2021-02-1
 
     for i in range(3):
         tools.set_xaxis_dateformat(axs[i], maxticks=15, ticklabels=(i==2))
-    fig.show()
-
     add_percentage_y2_axis(ax, label='Aandeel B.1.1.7 (%)')
 
+    # repeat to get the weekly ticks
+    tools.set_xaxis_dateformat(axs[2], maxticks=15)
+    fig.show()
     plt.pause(0.75)
 
 class _StartCond:
@@ -499,14 +499,25 @@ def fit_log_odds(xs, ys, last_weight=0.33):
 
 
 
+def _setup_country_fig_ax(labels):
+    """Return figure, axis with proper size to fit the legend."""
 
-def plot_countries_odds_ratios(subtract_eng_bg=True, country_select='all_recent',
+    max_label_len = max(len(lab) for lab in labels)
+    graph_width = 7
+    legend_width = (max_label_len + 7) * 0.065 # in inches
+    fig_width = graph_width + legend_width
+    fig_height = max(4, fig_width*0.5)
+
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height), tight_layout=True)
+    return fig, ax
+
+
+def plot_countries_odds_ratios(country_select='all_recent', subtract_eng_bg=True,
                                wiki=False):
 
-    cdict = get_data_countries(country_select, subtract_eng_bg=subtract_eng_bg)
+    cdict, meta_df = get_data_countries(country_select, subtract_eng_bg=subtract_eng_bg)
 
-    fig, ax = plt.subplots(tight_layout=True, figsize=(10, 5.5))
-
+    fig, ax = _setup_country_fig_ax(cdict)
 
     markers = iter('o^vs*Do^vs*D'*4)
     colors = plt.rcParams['axes.prop_cycle']()
@@ -517,7 +528,19 @@ def plot_countries_odds_ratios(subtract_eng_bg=True, country_select='all_recent'
 
     oddsfit_records = []
 
+    tm_now = pd.to_datetime('now')
+    tm_now += pd.Timedelta(12-tm_now.hour, 'h') # 12:00 noon
+
     for desc, df in cdict.items():
+        meta = meta_df.loc[desc] # metadata
+        if meta['ccode'] and meta['is_seq'] or ('DK' not in meta_df['ccode']):
+            # highlight countries with sequence data
+            # (only if country data like DK is in the selection)
+            plotargs = dict(zorder=0, alpha=0.9, linewidth=2, markersize=6)
+        else:
+            # SGTF data and sub-national regions
+            plotargs = dict(zorder=-10, alpha=0.4, markersize=4)
+
 
         odds = f2odds(df['f_b117']).values
         tms = df.index
@@ -538,58 +561,105 @@ def plot_countries_odds_ratios(subtract_eng_bg=True, country_select='all_recent'
             log_slope=float('%.4g' % oslope)
             ))
 
-        xse = np.array([xs[0] - 3, xs[-1] + 3]) # expanded x range
+        xse = np.array([xs[ifirst] - 3, xs[-1]]) # expanded x range
+        tms_fit = [tms[ifirst]-3*one_day, tms[-1]]
         odds_fit = np.exp(oslope * xse + odds0)
 
+        # extrapolate fit to present day. (Clip at odds=20, 21 days after most recent point)
+        xs_ext = np.arange((tms[-1] - tm0)/one_day, (tm_now - tm0)/one_day)
+        odds_ext = np.exp(oslope * xs_ext + odds0)
+        tms_ext = np.array([tm0 + dt for dt in xs_ext*one_day])
+        mask_ext = (odds_ext < 15) & (tms_ext < tms[-1] + pd.Timedelta(21, 'd'))
+
+        # draw the data
         p = next(markers)
         col = next(colors)
         label = f'{desc} [{oslope:.3f}]'
-        ax.semilogy(tms, odds, f'{p}', color=col, label=label)
-        ax.semilogy([tms[0]-3*one_day, tms[-1]+3*one_day], odds_fit, '-', color=col)
+        ax.semilogy(tms, odds, f'{p}', color=col, label=label, **plotargs)
+        ax.semilogy(tms_fit, odds_fit, '-', color=col, **plotargs)
+        ax.semilogy(tms_ext[mask_ext], odds_ext[mask_ext], '--', color=col, **plotargs)
+
+        if ifirst > 0:
+            ax.semilogy(tms[:ifirst+1], odds[:ifirst+1], ':', color=col, **plotargs)
 
     odds_fit_df = pd.DataFrame.from_records(oddsfit_records).set_index('region')
     print(f'Slope fit results:\n{odds_fit_df}')
 
-    # label 'today' in the graph
-    tm_now = pd.to_datetime('now')
-    tm_now += pd.Timedelta(12-tm_now.hour, 'h') # 12:00 noon
-
     if not wiki:
-        ymax = ax.get_ylim()[1]
+        ymin = ax.get_ylim()[0]
         ax.axvline(tm_now, color='#888888')
-        ax.text(tm_now, ymax, tm_now.strftime('%d %b  '),
-                horizontalalignment='right', verticalalignment='top', rotation=90)
+        ax.text(tm_now, ymin, tm_now.strftime('  %d %b'),
+                horizontalalignment='right', verticalalignment='bottom', rotation=90)
 
-    ax.set_ylabel('Odds ratio B.1.1.7/other')
+    ax.set_ylabel('Odds ratio B.1.1.7/other variants')
+
+
+    ax.yaxis.set_major_formatter(FormatStrFormatter('%g'))
+    # Monkey-patch to prevent '%e' formatting.
+    LogFormatter._num_to_string = lambda _0, x, _1, _2: ('%g' % x)
+    ax.yaxis.set_minor_formatter(LogFormatter(minor_thresholds=(2, 1)))
 
 
     tools.set_xaxis_dateformat(ax) # must be before adding a second y axis.
-    add_percentage_y2_axis(ax)
-    ax.legend(bbox_to_anchor=(1.2, 1), fontsize=9)
+
+    ax.legend(loc='upper left', bbox_to_anchor=(1.15, 1), fontsize=9)
     ax.set_title('B.1.1.7 presence in positive cases, with $\\log_e$ slopes')
     fig.canvas.set_window_title('B117 in countries/regions')
 
 
-    if subtract_eng_bg:
-        sgtf_subtracted = ' (backgroud positive rate subtracted for England regions)'
-    else:
-        sgtf_subtracted = ''
-    ax.text(1.10, -0.05 + 0.1 * (len(cdict) < 16),
-            'UK data is based on population sampling\n'
-            f'and mostly SGTF{sgtf_subtracted}.\n'
-            'UK SGTF data shifted by 14 days to estimate symptom onset.\n'
-            'Other data is from genomic sequencing (\'seq\').\n'
-            'Sources: Walker et al., Imperial College, ons.gov.uk\n'
-            'covid19genomics.dk, RIVM NL, Borges et al., sciencetaskforce.ch.'
-            , transform=ax.transAxes, fontsize=9)
-
     if not wiki:
+    #     if subtract_eng_bg:
+    #         sgtf_subtracted = ' (backgroud positive rate subtracted for England regions)'
+    #     else:
+    #         sgtf_subtracted = ''
+
+    #     ax.text(1.10, -0.05 + 0.1 * (len(cdict) < 16),
+    #             'UK data is based on population sampling\n'
+    #             f'and mostly SGTF{sgtf_subtracted}.\n'
+    #             'UK SGTF data shifted by 14 days to estimate symptom onset.\n'
+    #             'Other data is from genomic sequencing (\'seq\').\n'
+    #             'Sources: Walker et al., Imperial College, ons.gov.uk, ECDC,\n'
+    #             'covid19genomics.dk, RIVM NL, Borges et al., sciencetaskforce.ch.'
+    #             , transform=ax.transAxes, fontsize=9)
         fig.text(0.99, 0.01, '@hk_nien', fontsize=8,
-                  horizontalalignment='right', verticalalignment='bottom')
+                 horizontalalignment='right', verticalalignment='bottom')
 
-
+    add_percentage_y2_axis(ax)
+    tools.set_xaxis_dateformat(ax) # repeat, otherwise the y2 axis will delete the minor ticks.
     fig.show()
     plt.pause(0.5)
+
+    if wiki:
+        fname = f'output/uk_strain_status-{country_select}.png'
+        fig.savefig(fname)
+        print(f'Wrote {fname}.')
+
+
+def print_data_sources(select='picked'):
+    """Print data sources for selected country data."""
+
+    _, df = get_data_countries(select)
+    unique_sources = {} # keys: data-source tuple, value list of dataset IDs.
+
+    for key, val in df['refs'].items():
+        val = tuple(val)
+        if val in unique_sources:
+            unique_sources[val].append(key)
+        else:
+            unique_sources[val] = [key]
+
+    print(f'Data sources for select={select}:')
+    for refs, datasets in unique_sources.items():
+        ds_str = ', '.join(datasets)
+        refs_str = ', '.join(refs)
+        print(f'  {ds_str}: {refs_str}')
+
+
+print_data_sources()
+
+#%%
+
+
 
 
 # cases for simulate_and_plot_alt:
@@ -662,7 +732,7 @@ nl_alt_cases = dict(
                    ],
         # variations=dict(dR=0.04, fac_odds=1.2, fac_RR=1.077),
         variations=dict(dR=0.04, fac_odds=1.1, fac_RR=1.077),
-        country_select='picked'
+        country_select='countries'
         ),
     )
 
@@ -670,10 +740,24 @@ nl_alt_cases = dict(
 
 if __name__ == '__main__':
 
+    # Note: need to run this twice before en_US locale takes effect.
+    try:
+        locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+    except locale.Error as e:
+        print(f'Warning: cannot set language: {e.args[0]}')
+    plt.rcParams["date.autoformatter.day"] = "%d %b"
+
     plt.close('all')
     nlcs.init_data()
 
-    plot_countries_odds_ratios(subtract_eng_bg=True, country_select='all_recent')
+    if 1:
+        wiki=True # Write PNG for Wikipedia-suitable plots.
+        plot_countries_odds_ratios('countries', wiki=wiki)
+        print_data_sources('countries')
+        plot_countries_odds_ratios('uk', wiki=wiki)
+        print_data_sources('uk')
+
+
 
     ## effect of no background subtraction
     # plot_countries_odds_ratios(subtract_eng_bg=False)
