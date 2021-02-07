@@ -30,7 +30,9 @@ def get_summary_df(maxageh=1, force_today=False):
     - sDPL: shifted/blurred DPL number.
     """
 
-    if ca.download_rivm_casus_files(force_today=force_today):
+    sdf = ca.load_merged_summary_csv()
+    is_stale = sdf.iloc[-1].name[0] < pd.to_datetime('now') - pd.Timedelta(315.5, 'h')
+    if ca.download_rivm_casus_files(force_today=force_today) or is_stale:
         # If there is new data, process it.
         # This is a bit slow. Someday, be smarter in merging.
         ca.create_merged_summary_csv()
@@ -497,9 +499,9 @@ if __name__ == '__main__':
     # Default is a larger font for the title, overrule this.
     plt.rcParams['axes.titlesize'] = plt.rcParams['xtick.labelsize']
 
+    plots_for_report('nc10')
 
-
-    if True: # False during development
+    if 0 and True: # False during development
 
         ## This will create all plots (both on-screen and stored as files).
         ## Warning: major screen clutter.

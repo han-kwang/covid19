@@ -50,6 +50,7 @@ import re
 import locale
 import pickle
 import time
+import shutil
 from pathlib import Path
 from multiprocessing import Pool, cpu_count
 import urllib.request
@@ -93,6 +94,7 @@ CONFIG = dict(
         ],
     )
 
+
 def set_conf(**kwargs):
     """Set configuration parameters (CONFIG global variable)."""
 
@@ -128,6 +130,30 @@ def PoolNCPU(msg=None):
     return DummyPool()
 
 
+def _get_mzelst_casus_data_path_list():
+    """Return list with 0 or 1 Path entries to mzelst casus data dir."""
+
+    for p in CONFIG['mzelst_repro_dirs']:
+        p = p / 'data-rivm/casus-datasets'
+        if p.is_dir():
+            return [p]
+
+    return []
+
+def _find_casus_fpath(date):
+    """Return COVID-19_casus_landelijk_xxx.csv.gz file path for this date (yyyy-mm-dd)."""
+
+
+    dirpaths = [CONFIG['cdpath']] + _get_mzelst_casus_data_path_list()
+    fname = f'COVID-19_casus_landelijk_{date}.csv.gz'
+    for dirpath in dirpaths:
+        fpath = dirpath / fname
+        if fpath.exists():
+            return fpath
+    else:
+        raise FileNotFoundError(f'{fname} in {len(dirpaths)} directories.')
+
+
 def load_casus_data(date):
     """Return DataFrame with casus data from one RIVM csv file.
 
@@ -138,16 +164,9 @@ def load_casus_data(date):
     Load from data-casus/COVID-19_casus_landelijk_xxx.csv.gz
     Date_file and Date_statistics will be timestamps (at time 0:00)
     """
+    fpath = _find_casus_fpath(date)
 
-    fname = f'{CONFIG["cdpath"]}/COVID-19_casus_landelijk_{date}.csv'
-    if Path(fname).exists():
-       pass
-    elif Path(f'{fname}.gz').exists():
-        fname = f'{fname}.gz'
-    else:
-        raise FileNotFoundError(f'{fname} or {fname}.gz')
-
-    df = pd.read_csv(fname, sep=',')
+    df = pd.read_csv(fpath, sep=',')
 
     # Convert 'yyyy-mm-dd 10:00' to a 'yyyy-mm-dd' timestamp, because the 10:00
     # is just clutter when comparing dates.
@@ -188,52 +207,6 @@ def load_casus_summary(date):
     return dfsum
 
 
-def get_rivm_casus_files_from_local_repo(fdates):
-    """Attempt to get casus data files from local clone of the
-    mzelst repository and place gzipped copy in data-casus folder.
-
-    Parameter:
-
-    - fdates: list or set of 'yyyy-mm-dd' strings.
-
-    Return:
-
-    - fdates: list of remaining 'yyyy-mm-dd' strings (that were not found).
-    """
-
-    for repo_path in CONFIG['mzelst_repro_dirs']:
-        if repo_path.is_dir():
-            break
-    else:
-        # Not found.
-        print('No local mzelst/covid-19 repo avalailable.')
-        return fdates
-
-
-    repo_subdir = repo_path / 'data-rivm/casus-datasets'
-    fname_template = 'COVID-19_casus_landelijk_{date}.csv'
-    fdates_missing = set()
-    for fdate in fdates:
-        fname = fname_template.format(date=fdate)
-        fpath = repo_subdir / fname
-        if not fpath.is_file():
-            fdates_missing.add(fdate)
-            continue
-
-        fpath_out = CONFIG["cdpath"] / (fname_template.format(date=fdate) + '.gz')
-
-        with fpath.open('rb') as f_in, gzip.open(fpath_out, 'wb') as f_out:
-            data_bytes = f_in.read()
-            f_out.write(data_bytes)
-            print(f'Wrote {fpath_out}\n   (from {fpath}).')
-
-    if len(fdates_missing) == len(fdates):
-        print(f'No recent casus data available in {repo_path} .')
-    elif len(fdates_missing) > 0:
-        print(f'Not all recent casus data was available in {repo_path} .')
-
-    return sorted(fdates_missing)
-
 
 def download_rivm_casus_files(force_today=False):
     """Download missing day files in data-casus.
@@ -255,13 +228,16 @@ def download_rivm_casus_files(force_today=False):
     """
 
     fdates = set()
-    for fn in CONFIG["cdpath"].glob('COVID-19_casus_landelijk_*.csv.gz'):
-        fn = str(fn)
-        ma = re.search(r'(\d\d\d\d-\d\d-\d\d).csv.gz$', fn)
-        if not ma:
-            print(f'Pattern mismatch on {fn}.')
-            continue
-        fdates.add(ma.group(1))
+    cdata_paths = [CONFIG['cdpath']] + _get_mzelst_casus_data_path_list()
+
+    for cdata_path in cdata_paths:
+       for fn in cdata_path.glob('COVID-19_casus_landelijk_*.csv.gz'):
+            fn = str(fn)
+            ma = re.search(r'(\d\d\d\d-\d\d-\d\d).csv.gz$', fn)
+            if not ma:
+                print(f'Pattern mismatch on {fn}.')
+                continue
+            fdates.add(ma.group(1))
 
     # start date
     tm_start = pd.to_datetime('2020-07-01') # first date in repository
@@ -284,9 +260,6 @@ def download_rivm_casus_files(force_today=False):
     if len(fdates_missing) == 0:
         print('Casus files up to date.')
         return 0
-
-
-    fdates_missing = get_rivm_casus_files_from_local_repo(fdates_missing)
 
     if len(fdates_missing) > 10:
         input(f'Warning: do you really want to download {len(fdates_missing)}'
@@ -343,8 +316,9 @@ def load_merged_summary(date_lo, date_hi):
     fdates = []
     while date <= date_hi:
         date_str = date.strftime('%Y-%m-%d')
-        fpath = CONFIG["cdpath"] / f'COVID-19_casus_landelijk_{date_str}.csv.gz'
-        if not fpath.is_file():
+        try:
+            _find_casus_fpath(date_str)
+        except FileNotFoundError:
             print(f'Using casus data before {date_str}.')
             break
         fdates.append(date_str)
@@ -369,7 +343,7 @@ def create_merged_summary_csv(date_lo='2020-07-01'):
     print(f'Wrote {fpath} .')
 
 def load_merged_summary_csv(date_lo='2020-07-01', date_hi='2099-01-01'):
-    """Return history summary dataframe.
+    """Return history summary dataframe as stored in CSV file.
 
     Dataframe layout:
 
@@ -430,6 +404,7 @@ def _add_eDOO_to_df1(args):
     df1['Date_file'] = dtf
     df1 = df1.reset_index().set_index(['Date_file', 'Date_statistics'])
     return dtf, df1
+
 
 def add_eDOO_to_summary(df, delay_don=3, delay_dpl=2, blur=1):
     """Add eDOO column - estimated DOO - to summary dataframe.
@@ -1058,11 +1033,11 @@ def get_reporting_delay(df, initial_delay=7, end_trunc=4, start_trunc=5, plot=Tr
     - initial_delay: assume initial delay (days).
     - end_trunc: how many dates to truncate at the end
       (recent data unreliable; but set it too high and you'll get
-       a range error)
+       a range error. Lower than 4 is not very meaningful.)
     - start_trunc: how many dates to truncate at the beginning
       of the delay data.
     - plot: whether to show plot of the data.
-    - m: days to wait for reports to converge.
+    - m: days to wait for reports to converge (for weekday corrections).
 
     Return:
 
@@ -1075,7 +1050,7 @@ def get_reporting_delay(df, initial_delay=7, end_trunc=4, start_trunc=5, plot=Tr
     # Estimate is corrected for partial reporting but not for day-of-week
     # effects. Statsitics based on most recent m=18 days.
     fdates = np.array(sorted(df.index.get_level_values(0).unique()))
-    fdrange = ('2020-07-01', fdates[-1])
+    fdrange = ('2020-10-01', fdates[-1])
     doo_corr = DOOCorrection.from_doo_df(
             df, date_range=fdrange, m=m,
             )

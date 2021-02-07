@@ -30,7 +30,7 @@ import scipy.signal
 import scipy.interpolate
 import scipy.integrate
 import tools
-
+from g_mobility_data import get_g_mobility_data
 
 try:
     DATA_PATH = Path(__file__).parent / 'data'
@@ -878,9 +878,34 @@ def plot_anomalies_deltas(ndays=120):
     fig.canvas.set_window_title(title)
     fig.show()
 
+def _add_mobility_data_to_R_plot(ax):
+
+    try:
+        df = get_g_mobility_data()
+    except Exception as e:
+        print(f'No Google Mobility data: {e.__class__.__name__}: {e}')
+        return
+
+    ymin, ymax = ax.get_ylim()
+    y0 = ymin + (ymax - ymin)*0.85
+    scale = (ymax - ymin)*0.1
+
+    cols = ['retail_recr', 'transit', 'work', 'resid']
+    # from rcParams['axes.prop_cycle']
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+              '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'] * 5
+    scale /= df[cols].values.max()
+
+    ts = df.index
+    ax.axhline(y0, linestyle='--', color='gray')
+    for c, clr in zip(cols, colors):
+        hs = df[c].values
+        # ax.fill_between(ts, y0-scale*hs, y0+scale*hs, color=clr, alpha=0.3, label=c)
+        ax.plot(ts, y0+scale*hs, color=clr, label=c)
+
 
 def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
-            Tc=4.0, correct_anomalies=True):
+            Tc=4.0, correct_anomalies=True, g_mobility=False):
     """Plot R number based on growth/shrink in daily cases.
 
     - lastday: use case data up to this day.
@@ -894,6 +919,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
       'Nederland', 'V:xx' (holiday region), 'P:xx' (province), 'M:xx'
       (municipality).
     - correct_anomalies: whether to correct for known reporting anomalies.
+    - g_mobility: include Google mobility data (experimental, not very usable yet).
     """
 
     Rt_rivm = DFS['Rt_rivm']
@@ -1026,6 +1052,8 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
     xlim = (Rt.index[0] - pd.Timedelta('12 h'), Rt.index[-1] + pd.Timedelta('3 d'))
     ax.set_xlim(*xlim)
     _add_restriction_labels(ax, Rt.index[0], Rt.index[-1])
+    if g_mobility:
+        _add_mobility_data_to_R_plot(ax)
 
     ax.text(0.99, 0.98, '@hk_nien', transform=ax.transAxes,
             verticalAlignment='top', horizontalAlignment='right',

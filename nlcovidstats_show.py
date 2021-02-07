@@ -40,7 +40,7 @@ if __name__ == '__main__':
             region_list=pop_regions)
         nlcs.plot_cumulative_trends(ndays=200, regions=pop_regions)
 
-    if 'trens-prov' in show_plots:
+    if 'trends-prov' in show_plots:
         regions = [
             f'P:{p}'
             for p in nlcs.DFS['mun']['Province'].drop_duplicates().sort_values()
@@ -61,8 +61,6 @@ if __name__ == '__main__':
     if 'RtRegion' in show_plots:
         nlcs.plot_Rt(ndays=40, lastday=-1, delay=nlcs.DELAY_INF2REP,
                      regions='HR:Noord,HR:Midden+Zuid,POP:80-900,POP:0-80')
-
-
 
     if 'anomalies' in show_plots:
         nlcs.plot_anomalies_deltas(ndays=120)
