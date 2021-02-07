@@ -196,7 +196,7 @@ def _get_data_countries_weeknos():
             ('2021-W01-4', 0.074),
             ('2021-W02-4', 0.133),
             ],
-        'CH (seq; 2021-01-26)': [
+        'CH (seq; 2021-02-05)': [
             dict(ccode='CH', date='2021-01-26', is_seq=True, is_recent=True),
             ['https://sciencetaskforce.ch/nextstrain-phylogentische-analysen/'],
             ('2020-W51-4', 0.0004),
@@ -478,6 +478,87 @@ def _get_data_uk_countries_ons():
     return cdict, meta_records
 
 
+def _get_data_ch_parts():
+    """Note: this is daily data, not weekly data"""
+
+    region_records = {
+        'Genève (2021-02-07)': [
+            dict(ch_part='Genève', date='2021-02-07', is_recent=True, is_pcr=True),
+            ['https://ispmbern.github.io/covid-19/variants/'],
+            ('2021-01-13', 0.1817),
+            ('2021-01-14', 0.09823),
+            ('2021-01-15', 0.1932),
+            ('2021-01-16', 0.2441),
+            ('2021-01-17', 0.2124),
+            ('2021-01-18', 0.2499),
+            ('2021-01-19', 0.2167),
+            ('2021-01-20', 0.1903),
+            ('2021-01-21', 0.1661),
+            ('2021-01-22', 0.2907),
+            ('2021-01-23', 0.2557),
+            ('2021-01-24', 0.3348),
+            ('2021-01-25', 0.2665),
+            ('2021-01-26', 0.4243),
+            ('2021-01-27', 0.4792),
+            ('2021-01-28', 0.4893),
+            ('2021-01-29', 0.5135),
+            ('2021-01-30', 0.558),
+            ('2021-01-31', 0.5749),
+            ],
+        'Zürich (2021-02-07)': [
+            dict(ch_part='Zürich', is_recent=True, rebin=3),
+            ['https://ispmbern.github.io/covid-19/variants/'],
+            ('2021-01-06', 0.0007223),
+            ('2021-01-07', 0.03684),
+            ('2021-01-08', 0.01697),
+            ('2021-01-09', -0.0003611),
+            ('2021-01-10', 0.04912),
+            ('2021-01-11', 0.02564),
+            ('2021-01-12', -0.0003611),
+            ('2021-01-13', 0.02961),
+            ('2021-01-14', 0.1116),
+            ('2021-01-15', 0.1434),
+            ('2021-01-16', 0.0003611),
+            ('2021-01-17', 0.08451),
+            ('2021-01-18', -0.0007223),
+            ('2021-01-19', 0.1492),
+            ('2021-01-20', 0.06284),
+            ('2021-01-21', 0.277),
+            ('2021-01-22', 0.05273),
+            ('2021-01-23', 0.2232),
+            ('2021-01-24', 0.1672),
+            ('2021-01-25', 0.2004),
+            ('2021-01-26', 0.1192),
+            ('2021-01-27', 0.2867),
+            ('2021-01-28', 0.1571),
+            ('2021-01-29', 0.08234),
+            ('2021-01-30', 0.2867),
+            ('2021-01-31', 0.2777),
+            ('2021-02-01', 0.2929),
+            ('2021-02-02', 0.1495),
+            ('2021-02-03', -0.0003611),
+        ]
+        }
+
+    cdict = {}
+    meta_records = []
+    for desc, records in region_records.items():
+        df = pd.DataFrame.from_records(records[2:], columns=['sample_date', 'f_b117'])
+        df['sample_date'] = pd.to_datetime(df['sample_date'])
+        df = df.set_index('sample_date')
+        rebin = records[0]['rebin'] if 'rebin' in records[0] else None
+        if rebin:
+            # rebin noisy dataset
+            df = df.iloc[-(len(df) // rebin * rebin):]
+            df = df.rolling(window=rebin, center=True).mean().iloc[rebin//2::rebin]
+        cdict[desc] = df
+
+
+        _add_meta_record(meta_records, desc, records[0], records[1])
+
+    return cdict, meta_records
+
+
 def filter_countries(cdict, meta_df, select):
     """Select countries to display.
 
@@ -508,7 +589,8 @@ def filter_countries(cdict, meta_df, select):
     countries = list(df.index[~df['ccode'].isna() & df['is_recent']])
     uk_national = list(df.index[(df['ccode']=='UK')])
     uk_parts = list(df.index[~df['uk_part'].isna()])
-    eng_parts = list(df.index[~df['en_part'].isna() & df['is_recent']]) # TODO: CHECK @@
+    ch_parts = list(df.index[~df['ch_part'].isna() | (df['ccode'] == 'CH')])
+    eng_parts = list(df.index[~df['en_part'].isna() & df['is_recent']])
     all_recent = list(df.index[df['is_recent']])
 
     keys = []
@@ -521,6 +603,8 @@ def filter_countries(cdict, meta_df, select):
             keys += (countries + uk_parts)
         elif sel == 'uk':
             keys += uk_national + uk_parts + eng_parts
+        elif sel == 'ch':
+            keys += ch_parts
         elif sel == 'uk_parts':
             keys += uk_parts
         elif sel == 'eng_parts':
@@ -551,6 +635,7 @@ def filter_countries(cdict, meta_df, select):
     return new_cdict, new_mdf
 
 
+
 def get_data_countries(select=None, subtract_eng_bg=True):
     """Return dict, key=description, value=dataframe with Date, n_pos, f_b117, or_b117.
 
@@ -564,6 +649,7 @@ def get_data_countries(select=None, subtract_eng_bg=True):
         _get_data_uk_genomic(),
         _get_data_uk_countries_ons(),
         _get_data_England_regions(subtract_bg=subtract_eng_bg),
+        _get_data_ch_parts(),
         ]
 
     cdict = {}
@@ -575,7 +661,7 @@ def get_data_countries(select=None, subtract_eng_bg=True):
     meta_df = pd.DataFrame.from_records(meta_records).set_index('desc')
 
     # refs column should be the final column
-    columns = ['ccode', 'date', 'is_seq', 'is_sgtf', 'is_recent', 'en_part', 'uk_part', 'refs']
+    columns = ['ccode', 'date', 'is_seq', 'is_sgtf', 'is_pcr', 'is_recent', 'en_part', 'uk_part', 'refs']
     columns.extend(set(meta_df.columns).difference(columns)) # just in case
 
     meta_df = meta_df[columns]
@@ -593,3 +679,4 @@ def get_data_countries(select=None, subtract_eng_bg=True):
 if __name__ == '__main__':
     # just for testing
     cdict, mdf = get_data_countries('picked')
+    cdict, mdf = get_data_countries('ch')

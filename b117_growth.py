@@ -514,6 +514,12 @@ def _setup_country_fig_ax(labels):
 
 def plot_countries_odds_ratios(country_select='all_recent', subtract_eng_bg=True,
                                wiki=False):
+    """Generate graph with odds ratios over time on semi log scale.
+
+    UK data is based on population sampling, mostly SGTF (background subtracted).
+    UK SGTF data shifted by 14 days to estimate symptom onset.
+    Other data is from genomic sequencing ('seq').
+    """
 
     cdict, meta_df = get_data_countries(country_select, subtract_eng_bg=subtract_eng_bg)
 
@@ -546,9 +552,9 @@ def plot_countries_odds_ratios(country_select='all_recent', subtract_eng_bg=True
         tms = df.index
         xs = np.array((tms - tm0) / one_day)
 
-        # early points and last point in each curve deviates from the 'trend by eye'.
-        # Therefore, ignore them.
-        ifirst = max(1, len(xs)-6)
+        # Fitting on at most 6 weeks.
+        ifirst = np.argmax(tms > tms[-1] - pd.Timedelta(42, 'd'))
+        ifirst = max(1, ifirst)
         oslope, odds0 = fit_log_odds(xs[ifirst:], odds[ifirst:], last_weight=0.33)
 
         # show fit result
@@ -561,8 +567,8 @@ def plot_countries_odds_ratios(country_select='all_recent', subtract_eng_bg=True
             log_slope=float('%.4g' % oslope)
             ))
 
-        xse = np.array([xs[ifirst] - 3, xs[-1]]) # expanded x range
-        tms_fit = [tms[ifirst]-3*one_day, tms[-1]]
+        xse = np.array([xs[ifirst], xs[-1]]) # expanded x range
+        tms_fit = [tms[ifirst], tms[-1]]
         odds_fit = np.exp(oslope * xse + odds0)
 
         # extrapolate fit to present day. (Clip at odds=20, 21 days after most recent point)
@@ -614,13 +620,6 @@ def plot_countries_odds_ratios(country_select='all_recent', subtract_eng_bg=True
     #         sgtf_subtracted = ''
 
     #     ax.text(1.10, -0.05 + 0.1 * (len(cdict) < 16),
-    #             'UK data is based on population sampling\n'
-    #             f'and mostly SGTF{sgtf_subtracted}.\n'
-    #             'UK SGTF data shifted by 14 days to estimate symptom onset.\n'
-    #             'Other data is from genomic sequencing (\'seq\').\n'
-    #             'Sources: Walker et al., Imperial College, ons.gov.uk, ECDC,\n'
-    #             'covid19genomics.dk, RIVM NL, Borges et al., sciencetaskforce.ch.'
-    #             , transform=ax.transAxes, fontsize=9)
         fig.text(0.99, 0.01, '@hk_nien', fontsize=8,
                  horizontalalignment='right', verticalalignment='bottom')
 
@@ -752,17 +751,15 @@ if __name__ == '__main__':
 
     if 1:
         wiki=True # Write PNG for Wikipedia-suitable plots.
-        plot_countries_odds_ratios('countries', wiki=wiki)
-        print_data_sources('countries')
-        plot_countries_odds_ratios('uk', wiki=wiki)
-        print_data_sources('uk')
-
+        for select in ['countries', 'uk', 'ch']:
+            plot_countries_odds_ratios(select, wiki=wiki)
+            print_data_sources(select)
 
 
     ## effect of no background subtraction
     # plot_countries_odds_ratios(subtract_eng_bg=False)
 
-    1 and simulate_and_plot_alt(**nl_alt_cases['nl_ak_latest'])
+    0 and simulate_and_plot_alt(**nl_alt_cases['nl_ak_latest'])
     if 0: # set to 1/True to plot old data
         pass
         # simulate_and_plot_alt(**nl_alt_cases['nl_20201228'])
