@@ -326,7 +326,7 @@ def get_dow_correction(dayrange=(-50, -1), verbose=False):
     # timestamp index, columns Delta, Delta7r, and others.
     df, _ = get_region_data('Nederland', lastday=dayrange[-1], correct_dow=None)
     df = df.iloc[:-4] # Discard the last rows that have no correct rolling average.
-    df = df.iloc[dayrange[0]:]
+    df = df.iloc[dayrange[0]-dayrange[1]:]
 
     # Correction factor - 1
     df['Delta_factor'] = df['Delta']/df['Delta7r']
@@ -364,7 +364,7 @@ def get_dow_correction(dayrange=(-50, -1), verbose=False):
         fig.show()
 
     if rms_dc > 0.8*rms_d:
-        print('WARNING: DoW correction for dayrange={dayrange} does not seem to work.\n'
+        print(f'WARNING: DoW correction for dayrange={dayrange} does not seem to work.\n'
               '  Abandoning this correction.')
 
         factor_by_dow = np.ones(7)
@@ -476,6 +476,9 @@ def _correct_delta_anomalies(df):
         f = data['fraction']
         dt = data['days_back']
         dn = df.loc[match_date(date), 'Delta_orig'] * f
+        if len(dn) == 0:
+            print(f'Anomaly correction: no match for {date}; skipping.')
+            continue
         assert len(dn) == 1
         dn = dn[0]
         df.loc[match_date(date), 'Delta'] -= dn

@@ -50,6 +50,7 @@ import re
 import locale
 import pickle
 import time
+import io
 import shutil
 from pathlib import Path
 from multiprocessing import Pool, cpu_count
@@ -267,29 +268,29 @@ def download_rivm_casus_files(force_today=False):
     else:
         print(f'Will attempt to download case data for {len(fdates_missing)} days.')
 
-    fname_template = 'COVID-19_casus_landelijk_{date}.csv'
+    fname_template = 'COVID-19_casus_landelijk_{date}.csv.gz'
     url_template = (
         'https://github.com/mzelst/covid-19/raw/master/data-rivm/'
         f'casus-datasets/{fname_template}')
 
     for fdate in fdates_missing:
         url = url_template.format(date=fdate)
-        # @@ debug
-        # url = 'https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_cumulatief.csvx'
         print(f'Downloading casus data for {fdate} ...')
-        fpath = CONFIG["cdpath"] / (fname_template.format(date=fdate) + '.gz')
+        fpath = CONFIG["cdpath"] / (fname_template.format(date=fdate))
         with urllib.request.urlopen(url) as response:
             data_bytes = response.read()
             if response.code != 200:
                 raise FileNotFoundError(f'Response {response.code} on {url}')
-            if ('Date_statistics' not in data_bytes[:100].decode('utf-8')
-                or fdate not in data_bytes[-200:].decode('utf-8')):
+            with gzip.open(io.BytesIO(data_bytes), 'rb') as f:
+                data_bytes_unzip = f.read()
+            if ('Date_statistics' not in data_bytes_unzip[:100].decode('utf-8')
+                or fdate not in data_bytes_unzip[-200:].decode('utf-8')):
                 # RIVM website for one does not give a 404 when it should
                 raise ValueError(f'Bad or incomplete data in {url}.')
 
-        with gzip.open(fpath, 'wb') as f:
-
+        with fpath.open('wb') as f:
             f.write(data_bytes)
+
         print(f'Wrote {fpath} .')
 
     return len(fdates_missing)

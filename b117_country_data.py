@@ -152,11 +152,12 @@ def _get_data_countries_weeknos():
             ('2020-W53-4', 0.052),
             ('2021-W01-4', 0.119), # preliminary / calculation error (0.135???)
             ],
-        'NL (seq; 2021-01-31)': [
-            dict(ccode='NL', date='2021-01-31', is_seq=True, is_recent=True),
+        'NL (seq; 2021-02-07)': [
+            dict(ccode='NL', date='2021-02-07', is_seq=True, is_recent=True),
             ['https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id=2021Z00794&did=2021D02016',
              'https://www.tweedekamer.nl/sites/default/files/atoms/files/20210120_technische_briefing_commissie_vws_presentati_jaapvandissel_rivm_0.pdf',
              'https://www.tweedekamer.nl/downloads/document?id=00588209-3f6b-4bfd-a031-2d283129331c&title=98e%20OMT%20advies%20deel%201%20en%20kabinetsreactie',
+             'https://www.tweedekamer.nl/downloads/document?id=be0cb7fc-e3fd-4a73-8964-56f154fc387e&title=Advies%20n.a.v.%2099e%20OMT%20deel%202.pdf'
              ],
             ('2020-W49-5', 0.011), # OMT #96 >>
             ('2020-W50-5', 0.007),
@@ -165,6 +166,7 @@ def _get_data_countries_weeknos():
             ('2020-W53-5', 0.050), # << OMT #96
             ('2021-W01-5', 0.090), # TK briefing (read from figure ±0.005)
             ('2021-W02-5', 0.198), # OMT #98 (31 Jan)
+            ('2021-W03-5', 0.241), # OMT #99
             ],
         'UK (seq; 2021-01-21)': [
             dict(ccode='UK', date='2021-01-21', is_seq=True, is_recent=True),
@@ -184,9 +186,10 @@ def _get_data_countries_weeknos():
             ('2020-W53-4', 0.693),
             # ('2021-W01-4', ...),
             ],
-        'PT (seq; 2021-01-19)': [
-            dict(ccode='PT', date='2021-01-19', is_seq=True, is_recent=True),
+        'PT (seq; 2021-02-01)': [
+            dict(ccode='PT', date='2021-02-01', is_seq=True, is_recent=True),
             ['https://virological.org/t/tracking-sars-cov-2-voc-202012-01-lineage-b-1-1-7-dissemination-in-portugal-insights-from-nationwide-rt-pcr-spike-gene-drop-out-data/600',
+             'https://virological.org/t/tracking-sars-cov-2-voc-202012-01-lineage-b-1-1-7-dissemination-in-portugal-insights-from-nationwide-rt-pcr-spike-gene-drop-out-data/600/4',
              ],
             ('2020-W49-4', 0.019),
             ('2020-W50-4', 0.009),
@@ -195,9 +198,10 @@ def _get_data_countries_weeknos():
             ('2020-W53-4', 0.032),
             ('2021-W01-4', 0.074),
             ('2021-W02-4', 0.133),
+            ('2021-W03-4', 0.247),
             ],
         'CH (seq; 2021-02-05)': [
-            dict(ccode='CH', date='2021-01-26', is_seq=True, is_recent=True),
+            dict(ccode='CH', date='2021-02-05', is_seq=True, is_recent=True),
             ['https://sciencetaskforce.ch/nextstrain-phylogentische-analysen/'],
             ('2020-W51-4', 0.0004),
             ('2020-W52-4', 0.0043),
@@ -205,7 +209,7 @@ def _get_data_countries_weeknos():
             ('2021-W01-4', 0.0153),
             ('2021-W02-4', 0.0329),
             ('2021-W03-4', 0.0881),
-            ('2021-W04-4', 0.1717), # last updated ca. 2021-02-05
+            ('2021-W04-4', 0.158), # last updated ca. 2021-02-05
             ],
         # https://assets.gov.ie/121054/55e77ccd-7d71-4553-90c9-5cd6cdee7420.pdf (p. 53) up to wk 1
         # https://assets.gov.ie/121662/184e8d00-9080-44aa-af74-dbb13b0dcd34.pdf (p. 2, bullet 8) wk 2/3
