@@ -471,8 +471,11 @@ def _correct_delta_anomalies(df):
 
     dt_tol = pd.Timedelta(12, 'h') # tolerance on date matching
     match_date = lambda dt: abs(df.index - dt) < dt_tol
+    preserve_n = True
 
     for (date, data) in dfa.iterrows():
+        if date == '2021-02-08':
+            print('@foo')
         f = data['fraction']
         dt = data['days_back']
         dn = df.loc[match_date(date), 'Delta_orig'] * f
@@ -481,10 +484,18 @@ def _correct_delta_anomalies(df):
             continue
         assert len(dn) == 1
         dn = dn[0]
-        df.loc[match_date(date), 'Delta'] -= dn
-        df.loc[match_date(date + pd.Timedelta(dt, 'd')), 'Delta'] += dn
 
-    assert np.isclose(df["Delta"].sum(), df["Delta_orig"].sum(), rtol=1e-6, atol=0)
+        df.loc[match_date(date + pd.Timedelta(dt, 'd')), 'Delta'] += dn
+        if dt != 0:
+            df.loc[match_date(date), 'Delta'] -= dn
+        else:
+            preserve_n = False
+
+    if preserve_n:
+        assert np.isclose(df["Delta"].sum(), df["Delta_orig"].sum(), rtol=1e-6, atol=0)
+    else:
+        delta = df["Delta"].sum() - df["Delta_orig"].sum()
+        print(f'Note: case count increased by {delta*17.4e6:.0f} cases due to anomalies.')
 
 
 
@@ -959,7 +970,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
             label = re.sub('^[A-Z]+:', '', region)
 
         ax.plot(Rt[:-3], fmt, label=label, markersize=psize, color=color)
-        ax.plot(Rt[-3:], fmt, label=label, markersize=psize, color=color, alpha=0.35)
+        ax.plot(Rt[-3:], fmt, markersize=psize, color=color, alpha=0.35)
 
         # add confidence range (ballpark estimate)
         print(region)
@@ -989,8 +1000,8 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
             if abs(Rt_smooth_latest - Rt_point_latest) < 0.015:
                 txt = f'R={(Rt_smooth_latest+Rt_point_latest)/2:.2f}'
             else:
-                txt = (f'R={Rt_smooth_latest:.2f} (datapunt), '
-                       f'R={Rt_point_latest:.2f} (voorlopige trendlijn)')
+                txt = (f'R={Rt_point_latest:.2f} (datapunt), '
+                       f'R={Rt_smooth_latest:.2f} (voorlopige trendlijn)')
             print(f'Update reproductiegetal Nederland t/m {date_latest}: {txt}.'
                   f' Trend: {"+" if slope>=0 else "−"}{abs(slope):.3f} per dag.')
 
@@ -1034,9 +1045,22 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
     ax.axhline(1, color='k', linestyle='--')
     ax.text(t_mark, ax.get_ylim()[1], Rt.index[-4].strftime("%d %b "),
             rotation=90, horizontalalignment='right', verticalalignment='top')
+
+    xnotes = []
+    if source != 'r7':
+        xnotes.append(source)
+    if correct_anomalies:
+        anom_date = DFS['anomalies'].index[-1].strftime('%d %b') # most recent anomaly date
+        xnotes.append(f'correctie o.a. {anom_date}')
+    if xnotes:
+        xnotes = ", ".join([""]+xnotes).replace(' ', '~')
+        xnotes = r'$\bf{%s}$' % xnotes
+    else:
+        xnotes = ''
+
     ax.set_title(f'Reproductiegetal o.b.v. positieve tests; laatste {iex} dagen zijn een extrapolatie\n'
-                 f'(Generatie-interval: {Tc:.3g} dg, rapportagevertraging {delay_str} dg) '
-                 f'[{source}]')
+                 f'(Generatie-interval: {Tc:.3g} dg, rapportagevertraging {delay_str} dg{xnotes})'
+                 )
     ax.set_ylabel('Reproductiegetal $R_t$')
 
     # setup the x axis before adding y2 axis.

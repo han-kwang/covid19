@@ -39,6 +39,20 @@ def _convert_ywd_records(records, colnames=('f_b117',)):
 
     return df
 
+def set_date_in_records_keys(rrecords):
+    """Replace {date} in key by date in 1st item for each, in-place.
+
+    e.g. 'NL ({date})' -> 'NL (2021-01-01)'.
+    """
+
+    keys = list(rrecords.keys())
+    for k in keys:
+        new_k = k.format(date=rrecords[k][0]['date'])
+        record = rrecords[k]
+        del rrecords[k]
+        rrecords[new_k] = record
+
+
 
 def _add_meta_record(reclist, desc, mdict, refs):
     """Add record to reclist; record is a dict with keys:
@@ -119,7 +133,7 @@ def _get_data_countries_weeknos():
     # Item 0 in each list: metadata
     # Item 1 in each list: source URLs
     country_records = {
-        'DK (seq; 2021-01-01)': [
+        'DK (seq; {date})': [
             dict(ccode='DK', date='2021-01-01', is_seq=True, is_recent=False),
             ['https://covid19.ssi.dk/-/media/cdn/files/opdaterede-data-paa-ny-engelsk-virusvariant-sarscov2-cluster-b117--01012021.pdf?la=da'],
             ('2020-W49-4', 0.002),
@@ -127,8 +141,8 @@ def _get_data_countries_weeknos():
             ('2020-W51-4', 0.009),
             ('2020-W52-4', 0.023)
             ],
-        'DK (seq; 2021-02-05)': [
-            dict(ccode='DK', date='2021-02-05', is_seq=True, is_recent=True),
+        'DK (seq; {date})': [
+            dict(ccode='DK', date='2021-02-14', is_seq=True, is_recent=True),
             ['https://www.covid19genomics.dk/statistics'],
             ('2020-W48-4', 0.002),
             ('2020-W49-4', 0.002),
@@ -140,8 +154,9 @@ def _get_data_countries_weeknos():
             ('2021-W02-4', 0.075),
             ('2021-W03-4', 0.128),
             ('2021-W04-4', 0.191), # last updated 2021-02-05
+            ('2021-W05-4', 0.271), # last updated before 2021-02-14
             ],
-        'NL (seq; 2021-01-19; OMT)': [
+        'NL (seq; {date}; OMT)': [
             dict(ccode='NL', date='2021-01-01', is_seq=True, is_recent=False),
             ['https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id=2021Z00794&did=2021D02016',
              'https://www.rivm.nl/coronavirus-covid-19/omt'],
@@ -152,7 +167,7 @@ def _get_data_countries_weeknos():
             ('2020-W53-4', 0.052),
             ('2021-W01-4', 0.119), # preliminary / calculation error (0.135???)
             ],
-        'NL (seq; 2021-02-07)': [
+        'NL (seq; {date})': [
             dict(ccode='NL', date='2021-02-07', is_seq=True, is_recent=True),
             ['https://www.tweedekamer.nl/kamerstukken/brieven_regering/detail?id=2021Z00794&did=2021D02016',
              'https://www.tweedekamer.nl/sites/default/files/atoms/files/20210120_technische_briefing_commissie_vws_presentati_jaapvandissel_rivm_0.pdf',
@@ -168,7 +183,7 @@ def _get_data_countries_weeknos():
             ('2021-W02-5', 0.198), # OMT #98 (31 Jan)
             ('2021-W03-5', 0.241), # OMT #99
             ],
-        'UK (seq; 2021-01-21)': [
+        'UK (seq; {date})': [
             dict(ccode='UK', date='2021-01-21', is_seq=True, is_recent=True),
             ['https://www.ecdc.europa.eu/sites/default/files/documents/COVID-19-risk-related-to-spread-of-new-SARS-CoV-2-variants-EU-EEA-first-update.pdf',
             ],
@@ -186,10 +201,11 @@ def _get_data_countries_weeknos():
             ('2020-W53-4', 0.693),
             # ('2021-W01-4', ...),
             ],
-        'PT (seq; 2021-02-01)': [
-            dict(ccode='PT', date='2021-02-01', is_seq=True, is_recent=True),
+        'PT (seq; {date})': [
+            dict(ccode='PT', date='2021-02-11', is_seq=True, is_recent=True),
             ['https://virological.org/t/tracking-sars-cov-2-voc-202012-01-lineage-b-1-1-7-dissemination-in-portugal-insights-from-nationwide-rt-pcr-spike-gene-drop-out-data/600',
              'https://virological.org/t/tracking-sars-cov-2-voc-202012-01-lineage-b-1-1-7-dissemination-in-portugal-insights-from-nationwide-rt-pcr-spike-gene-drop-out-data/600/4',
+             'https://virological.org/t/tracking-sars-cov-2-voc-202012-01-lineage-b-1-1-7-dissemination-in-portugal-insights-from-nationwide-rt-pcr-spike-gene-drop-out-data/600/7',
              ],
             ('2020-W49-4', 0.019),
             ('2020-W50-4', 0.009),
@@ -199,9 +215,11 @@ def _get_data_countries_weeknos():
             ('2021-W01-4', 0.074),
             ('2021-W02-4', 0.133),
             ('2021-W03-4', 0.247),
+            ('2021-W04-4', 0.365),
+            ('2021-W05-4', 0.427),
             ],
-        'CH (seq; 2021-02-05)': [
-            dict(ccode='CH', date='2021-02-05', is_seq=True, is_recent=True),
+        'CH (seq; {date})': [
+            dict(ccode='CH', date='2021-02-14', is_seq=True, is_recent=True),
             ['https://sciencetaskforce.ch/nextstrain-phylogentische-analysen/'],
             ('2020-W51-4', 0.0004),
             ('2020-W52-4', 0.0043),
@@ -210,13 +228,15 @@ def _get_data_countries_weeknos():
             ('2021-W02-4', 0.0329),
             ('2021-W03-4', 0.0881),
             ('2021-W04-4', 0.158), # last updated ca. 2021-02-05
+            ('2021-W05-4', 0.235), # last updated before 2021-02-14
             ],
         # https://assets.gov.ie/121054/55e77ccd-7d71-4553-90c9-5cd6cdee7420.pdf (p. 53) up to wk 1
         # https://assets.gov.ie/121662/184e8d00-9080-44aa-af74-dbb13b0dcd34.pdf (p. 2, bullet 8) wk 2/3
-        'IE (SGTF; 2021-01-28)': [
-            dict(ccode='IE', date='2021-01-28', is_seq=False, is_sgtf=True, is_recent=True),
+        'IE (SGTF; {date})': [
+            dict(ccode='IE', date='2021-02-04', is_seq=False, is_sgtf=True, is_recent=True),
             ['https://assets.gov.ie/121054/55e77ccd-7d71-4553-90c9-5cd6cdee7420.pdf', # (p. 53) up to wk 1
              'https://assets.gov.ie/121662/184e8d00-9080-44aa-af74-dbb13b0dcd34.pdf', # (p. 2, bullet 8) wk 2/3
+             'https://assets.gov.ie/122798/644f5185-5067-4bd4-89fa-8cb75670821d.pdf', # p. 2, bullet 5
              ],
             ('2020-W50-4', 0.014),
             ('2020-W51-4', 0.086),
@@ -225,9 +245,11 @@ def _get_data_countries_weeknos():
             ('2021-W01-4', 0.463), # 21 Jan
             ('2021-W02-4', 0.58),
             ('2021-W03-4', 0.63), # 28 Jan
+            ('2021-W04-4', 0.695), # 4 Feb
+            ('2021-W05-4', 0.75), # 4 Feb
             ]
         }
-
+    set_date_in_records_keys(country_records)
     cdict = {}
     meta_records = []
     for desc, records in country_records.items():
@@ -486,8 +508,8 @@ def _get_data_ch_parts():
     """Note: this is daily data, not weekly data"""
 
     region_records = {
-        'Genève (2021-02-07)': [
-            dict(ch_part='Genève', date='2021-02-07', is_recent=True, is_pcr=True),
+        'Genève (PCR, {date})': [
+            dict(ch_part='Genève', date='2021-02-14', is_recent=True, is_pcr=True),
             ['https://ispmbern.github.io/covid-19/variants/'],
             ('2021-01-13', 0.1817),
             ('2021-01-14', 0.09823),
@@ -508,9 +530,19 @@ def _get_data_ch_parts():
             ('2021-01-29', 0.5135),
             ('2021-01-30', 0.558),
             ('2021-01-31', 0.5749),
+            ('2021-02-01', 0.5002),
+            ('2021-02-02', 0.6163),
+            ('2021-02-03', 0.8583),
+            ('2021-02-04', 0.5307),
+            ('2021-02-05', 0.5474),
+            ('2021-02-06', 0.7215),
+            ('2021-02-07', 0.6295),
+            ('2021-02-08', 0.6842),
+            ('2021-02-09', 0.7279),
+            ('2021-02-10', 0.7943),
             ],
-        'Zürich (2021-02-07)': [
-            dict(ch_part='Zürich', is_recent=True, rebin=3),
+        'Zürich (PCR; {date})': [
+            dict(ch_part='Zürich', date='2021-02-14', is_recent=True, rebin=3),
             ['https://ispmbern.github.io/covid-19/variants/'],
             ('2021-01-06', 0.0007223),
             ('2021-01-07', 0.03684),
@@ -541,8 +573,19 @@ def _get_data_ch_parts():
             ('2021-02-01', 0.2929),
             ('2021-02-02', 0.1495),
             ('2021-02-03', -0.0003611),
+            ('2021-02-01', 0.2304),
+            ('2021-02-02', 0.2872),
+            ('2021-02-03', 0.2914),
+            ('2021-02-04', 0.2872),
+            ('2021-02-05', 0.388),
+            ('2021-02-06', 0.3805),
+            ('2021-02-07', 0.4331),
+            ('2021-02-08', 0.453),
+            ('2021-02-09', 0.2219),
+            ('2021-02-10', 0.4466),
         ]
         }
+    set_date_in_records_keys(region_records)
 
     cdict = {}
     meta_records = []

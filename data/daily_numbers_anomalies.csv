@@ -1,5 +1,6 @@
 # For these report dates, assign given fraction of the original number
 # of cases to case counts this many days back.
+# If "days_back" is zero, then ADD this amount to the present day.
 Date_report,fraction,days_back,reference
 #
 2020-10-25,0.07,-1,https://nos.nl/artikel/2353767-10-211-nieuwe-coronabesmettingen-toename-deels-verklaarbaar-door-correctie.html
@@ -12,4 +13,10 @@ Date_report,fraction,days_back,reference
 2020-12-16,0.05,-1
 2020-12-17,0.15,-2,https://nos.nl/artikel/2361044-rivm-meldt-12-844-nieuwe-besmettingen-hoger-door-correctie-na-storing.html
 2020-12-18,0.05,-3,
+# Gap in data on 8-9 Feb; does not seem to be caught up in following days.
+# Fill in the too-low days by checking weekday effects of previous weeks.
+# https://nos.nl/liveblog/2367776-politie-en-burgemeesters-staan-achter-verlenging-avondklok-vierdaagse-gaat-niet-door.html#UPDATE-container-50922276
+2021-02-08,0.4,0
+2021-02-09,0.75,0
+2021-02-10,0.35,0
 # EOF
