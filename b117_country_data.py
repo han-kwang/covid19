@@ -165,7 +165,7 @@ def _get_data_countries_weeknos():
             ('2020-W51-4', 0.011),
             ('2020-W52-4', 0.014),
             ('2020-W53-4', 0.052),
-            ('2021-W01-4', 0.119), # preliminary / calculation error (0.135???)
+            ('2021-W01-4', 0.119), # preliminary
             ],
         'NL (seq; {date})': [
             dict(ccode='NL', date='2021-02-07', is_seq=True, is_recent=True),
