@@ -19,4 +19,10 @@ Date_report,fraction,days_back,reference
 2021-02-08,0.4,0
 2021-02-09,0.75,0
 2021-02-10,0.35,0
+# Testing locations closed on 15 Feb during the morning, due to weather.
+# https://nos.nl/liveblog/2368791-grote-coronauitbraak-in-amersfoorts-verpleeghuis-meer-coronaboetes-dan-vorige-week#UPDATE-container-51084789
+#2021-02-16,0.05,0
+#2021-02-17,0.15,0
+#2021-02-18,0.15,-1
+2021-04-15,0.18,-1
 # EOF

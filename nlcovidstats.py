@@ -65,11 +65,19 @@ DFS = {}
 
 
 def load_restrictions():
-    """Return restrictions DataFrame; index=DateTime, column=Description."""
+    """Return restrictions DataFrame.
+
+    - index: DateTime start.
+    - 'Date_stop': DateTime
+    - 'Description': Description string.
+    - 'Flags':  None or string (to indicate that it is only shown in a
+      particular type of grahp.
+    """
 
     df = pd.read_csv(DATA_PATH / 'restrictions.csv', comment='#')
     df['Date'] = pd.to_datetime(df['Date']) + pd.Timedelta('12:00:00')
     df['Date_stop'] = pd.to_datetime(df['Date_stop'])
+    df.loc[df['Flags'].isna(), 'Flags'] = None
     df.set_index('Date', inplace=True)
     return df
 
@@ -391,7 +399,8 @@ def get_region_data(region, lastday=-1, printrows=0, correct_anomalies=True,
     Special municipalities:
 
     - 'Nederland': all
-    - 'HR:Zuid', 'HR:Noord', 'HR:Midden', 'HR:Midden+Zuid': holiday regions.
+    - 'HR:Zuid', 'HR:Noord', 'HR:Midden', 'HR:Midden+Zuid', 'HR:Midden+Noord':
+      holiday regions.
     - 'MS:xx-yy': municipalities with population xx <= pop/1000 < yy'
     - 'P:xx': province
 
@@ -642,12 +651,17 @@ def add_labels(ax, labels, xpos, mindist_scale=1.0, logscale=True):
     from scipy.optimize import fmin_cobyla
 
     ymin, ymax = ax.get_ylim()
-    mindist = np.log10(ymax/ymin)*0.025*mindist_scale
+
+    if logscale:
+        mindist = np.log10(ymax/ymin)*0.025*mindist_scale
+    else:
+        mindist = (ymax - ymin)*0.025*mindist_scale
 
 
     labels = sorted(labels)
 
-    # log positions and sorted
+    # log positions and sorted$ffmpeg -i Rt_%03d.png  -c:v libx264 -r 25 -pix_fmt yuv420p out.mp4
+
     if logscale:
         Ys = np.log10([l[0] for l in labels])
     else:
@@ -684,15 +698,19 @@ def _zero2nan(s):
     sc[s <= 0] = np.nan
     return sc
 
-def _add_restriction_labels(ax, tmin, tmax, with_ribbons=True):
+def _add_restriction_labels(ax, tmin, tmax, with_ribbons=True, textbox=False, bottom=True,
+                            flagmatch='RGraph'):
     """Add restriction labels and ribbons to axis (with date on x-axis).
 
     - ax: axis object
     - tmin, tmax: time range to assume for x axis.
+    - textbox: whether to draw text in a semi-transparent box.
+    - bottom: whether to put labels at the bottom rather than top.
+    - flagmatch: which flags to match (regexp).
     """
 
     ymin, ymax = ax.get_ylim()
-    y_lab = ymin
+    y_lab = ymin if bottom else ymax
     ribbon_yspan =  (ymax - ymin)*0.35
     ribbon_hgt = ribbon_yspan*0.1 # ribbon height
     ribbon_ystep = ribbon_yspan*0.2
@@ -700,10 +718,17 @@ def _add_restriction_labels(ax, tmin, tmax, with_ribbons=True):
     ribbon_colors = ['#ff0000', '#cc7700'] * 2
     if df_restrictions is not None:
         i_res = 0
-        for _, (res_t, res_t_end, res_d) in df_restrictions.reset_index().iterrows():
+        for _, (res_t, res_t_end, res_d, flags) in df_restrictions.reset_index().iterrows():
             if not (tmin <= res_t <= tmax):
                 continue
-            ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center')
+            if flags and not re.match(flagmatch, flags):
+                continue
+            res_d = res_d.replace('\\n', '\n')
+            # note; with \n in text, alignment gets problematic.
+            txt = ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center',
+                          verticalalignment='bottom' if bottom else 'top')
+            if textbox:
+                txt.set_bbox(dict(facecolor='white', alpha=0.4, linewidth=0))
             if pd.isna(res_t_end):
                 continue
             if with_ribbons:
@@ -801,7 +826,10 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
 
         labels.append((df1[dnc_column][-1]*1e5, f' {reg_label} ({texp})'))
 
-    _add_restriction_labels(ax, df1.index[0], df1.index[-1], with_ribbons=False)
+    _add_restriction_labels(
+        ax, df1.index[0], df1.index[-1], with_ribbons=False,
+        flagmatch='CaseGraph'
+        )
 
 
     dfc = pd.DataFrame.from_records(
@@ -905,7 +933,7 @@ def _add_mobility_data_to_R_plot(ax):
     scale = (ymax - ymin)*0.1
 
     cols = ['retail_recr', 'transit', 'work', 'resid']
-    # from rcParams['axes.prop_cycle']
+    # from rcParams['axes.prop_cycle']Ik werk met he
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
               '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'] * 5
     scale /= df[cols].values.max()
@@ -919,7 +947,8 @@ def _add_mobility_data_to_R_plot(ax):
 
 
 def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
-            Tc=4.0, correct_anomalies=True, g_mobility=False):
+            Tc=4.0, correct_anomalies=True, g_mobility=False, mode='show',
+            ylim=None):
     """Plot R number based on growth/shrink in daily cases.
 
     - lastday: use case data up to this day.
@@ -934,6 +963,8 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
       (municipality).
     - correct_anomalies: whether to correct for known reporting anomalies.
     - g_mobility: include Google mobility data (experimental, not very usable yet).
+    - mode: 'show' or 'return_fig'
+    - ylim: optional y axis range (ymin, ymax)
     """
 
     Rt_rivm = DFS['Rt_rivm']
@@ -941,6 +972,10 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
     fig, ax = plt.subplots(figsize=(10, 5))
     fig.subplots_adjust(top=0.90, bottom=0.11, left=0.09, right=0.92)
     plt.xticks(rotation=-20)
+
+    if ylim:
+        ax.set_ylim(*ylim)
+
     # dict: municitpality -> population
 
     # from rcParams['axes.prop_cycle']
@@ -1025,7 +1060,8 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
         # final values
         Rt_rivm_final = Rt_rivm.loc[tm_lo:tm_rivm_est, 'R']
         ax.plot(Rt_rivm_final.iloc[:-1], 'k-', label='RIVM')
-        ax.plot(Rt_rivm_final.iloc[-2::-7], 'ko', markersize=4)
+        mask_fridays = (Rt_rivm_final.index.dayofweek == 5)
+        ax.plot(Rt_rivm_final.loc[mask_fridays], 'ko', markersize=4)
         # estimates
         Rt_rivm_est = Rt_rivm.loc[tm_rivm_est-pd.Timedelta(1, 'd'):Rt.index[-1]]
         # print(Rt_rivm_est)
@@ -1051,10 +1087,9 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
         xnotes.append(source)
     if correct_anomalies:
         anom_date = DFS['anomalies'].index[-1].strftime('%d %b') # most recent anomaly date
-        xnotes.append(f'correctie o.a. {anom_date}')
+        xnotes.append(f'correctie pos. tests o.a. {anom_date}')
     if xnotes:
-        xnotes = ", ".join([""]+xnotes).replace(' ', '~')
-        xnotes = r'$\bf{%s}$' % xnotes
+        xnotes = ", ".join([""]+xnotes)
     else:
         xnotes = ''
 
@@ -1078,7 +1113,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
 
     xlim = (Rt.index[0] - pd.Timedelta('12 h'), Rt.index[-1] + pd.Timedelta('3 d'))
     ax.set_xlim(*xlim)
-    _add_restriction_labels(ax, Rt.index[0], Rt.index[-1])
+    _add_restriction_labels(ax, Rt.index[0], Rt.index[-1], flagmatch='RGraph')
     if g_mobility:
         _add_mobility_data_to_R_plot(ax)
 
@@ -1088,8 +1123,15 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
 
     ax.legend(loc='upper center')
 
-    fig.canvas.set_window_title(f'Rt ({", ".join(regions)[:30]}, ndays={ndays})')
-    fig.show()
+    if mode == 'show':
+        fig.canvas.set_window_title(f'Rt ({", ".join(regions)[:30]}, ndays={ndays})')
+        fig.show()
+
+    elif mode == 'return_fig':
+        return fig
+
+    else:
+        raise ValueError(f'mode={mode!r}')
 
 
 def plot_Rt_oscillation():

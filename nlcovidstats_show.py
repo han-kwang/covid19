@@ -14,7 +14,6 @@ if __name__ == '__main__':
     # Which plots to show.
     # RtD9 is not included here (its purpose is to show bad data, not labeled explicitly).
     show_plots = 'Rtosc,trends,trends-pop,trends-prov,Rt,RtRegion,delay,anomalies,dowcorr'.split(',')
-
     # Uncomment and change line below to do a selection of plots rather than
     # all of them.
     # show_plots = 'Rt,dowcorr'.split(',')

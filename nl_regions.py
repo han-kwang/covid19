@@ -188,7 +188,8 @@ def select_cases_region(dfc, region):
     - region: one of:
       - the name of a municipality
       - 'Nederland': all
-      - 'HR:Zuid', 'HR:Noord', 'HR:Midden', 'HR:Midden+Zuid': holiday regions.
+      - 'HR:Zuid', 'HR:Noord', 'HR:Midden', 'HR:Midden+Zuid', 'HR:Midden+Noord':
+        holiday regions.
       - 'POP:xx-yy': municipalities with population xx <= pop/1000 < yy'
       - 'P:xx': province
       - 'JSON:{...}' json dict containing key 'muns' with a list
@@ -212,6 +213,8 @@ def select_cases_region(dfc, region):
         mselect = df_mun
     elif region == 'HR:Midden+Zuid':
         mselect = df_mun.loc[df_mun['HolRegion'].str.match('Midden|Zuid')]
+    elif region == 'HR:Midden+Noord':
+        mselect = df_mun.loc[df_mun['HolRegion'].str.match('Midden|Noord')]
     elif region.startswith('HR:'):
         mselect = df_mun.loc[df_mun['HolRegion'] == region[3:]]
     elif region.startswith('P:'):
