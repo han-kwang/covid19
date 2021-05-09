@@ -25,4 +25,8 @@ Date_report,fraction,days_back,reference
 #2021-02-17,0.15,0
 #2021-02-18,0.15,-1
 2021-04-15,0.18,-1
+2021-04-28,0.07,-1
+# IT issues in test bookings
+# https://nos.nl/liveblog/2379059-inbraakpoging-teststraat-bovenkarspel-druk-duitse-ziekenhuizen-neemt-iets-af#UPDATE-container-52836693
+2021-05-03,0.25,-1
 # EOF

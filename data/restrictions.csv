@@ -26,18 +26,24 @@ Date,Date_stop,Description,Flags
 2021-02-10,2021-02-11,IJzel (15 feb),RGraph
 2021-02-15,2021-02-16,IJzel,CaseGraph
 2021-02-13,2021-02-21,Schoolvak. Zuid
-2021-02-17,,5% 1e prik
 2021-02-20,2021-02-28,Schoolvak. Mid/Noord
 2021-03-01,,MO deels open
 2021-03-03,,Versoepeling
-#2021-03-10,,7.5% 1e prik
 2021-03-31,2021-04-28,Avondklok 22:00
-2021-03-23,2021-03-30,Effect zelftests,RGraph
+2021-03-23,2021-03-30,Effect zelftests?,RGraph
 2021-03-31,,Zelftests,CaseGraph
-2021-03-29,,10% 1e prik
-2021-04-13,,15% 1e prik
-#2021-04-23,,20% 1e prik
-2021-04-28,,VERSOEPELINGEN
+2021-04-27,,Koningsdag
+2021-04-28T,,VERSOEPELINGEN
 2021-05-01,2021-05-09,Schoolvak.
-#2021-05-01,,25% 1e prik
+2021-05-02,,Ajax-feest
+
+
+# run calc_vaccinations.py
+2021-02-17,,5% 1e prik
+2021-03-30,,10% 1e prik
+2021-04-14,,15% 1e prik
+2021-04-25,,20% 1e prik
+2021-05-05,,25% 1e prik
+2021-05-14,,30% 1e prik
+
 # EOF

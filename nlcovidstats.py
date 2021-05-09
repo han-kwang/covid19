@@ -48,6 +48,8 @@ DELAY_INF2REP = [
     ('2020-10-09', 9),
     ('2020-11-08', 7),
     ('2020-12-01', 6.5),
+    ('2021-02-15', 6.5),
+    ('2021-04-05', 4),
     ]
 
 # this will contain dataframes, initialized by init_data().
@@ -134,13 +136,14 @@ def download_Rt_rivm(force=False):
 
     - force: whether to download without checking the date.
 
-    Usually, data is published on Tue 15:15 covering data up to the Friday
-    before.
+    Usually, data is published on Fri and Tue, 15:15 or 15:25.
 
     For history purposes, files will be saved as
 
     'rivm_reproductiegetal.csv' (latest)
     'rivm_reproductiegetal-yyyy-mm-dd.csv' (by most recent date in the data file).
+
+    The file 'rivm_R_updates.csv' will be updated as well.
     """
 
     # get last date available locally
@@ -169,23 +172,65 @@ def download_Rt_rivm(force=False):
     with urllib.request.urlopen(url) as response:
         json_bytes = response.read()
         f = io.BytesIO(json_bytes)
-        df = pd.read_json(f) # Columns Date, Rt_low, Rt_avg Rt_up, ...
-        df.set_index('Date', inplace=True)
 
-        f = io.StringIO()
-        df.to_csv(f, float_format='%.4g')
-        f.seek(0)
-        data_bytes = f.read().encode('utf-8')
+    df = pd.read_json(f) # Columns Date, Rt_low, Rt_avg Rt_up, ...
+    df.set_index('Date', inplace=True)
 
-        if data_bytes == local_file_data:
-            print(f'{fpath}: already latest version.')
-        else:
-            fpath.write_bytes(data_bytes)
-            print(f'Wrote {fpath} .')
-            ymd = df.index[-1].strftime('-%Y-%m-%d')
-            fpath_arch = Path(fname_tpl.format(ymd))
-            fpath_arch.write_bytes(data_bytes)
-            print(f'Wrote {fpath_arch} .')
+    f = io.StringIO()
+    df.to_csv(f, float_format='%.4g')
+    f.seek(0)
+    data_bytes = f.read().encode('utf-8')
+
+    if data_bytes == local_file_data:
+        print(f'{fpath}: already latest version.')
+        return
+
+    # New dataset! Write it.
+    fpath.write_bytes(data_bytes)
+    print(f'Wrote {fpath} .')
+    ymd = df.index[-1].strftime('-%Y-%m-%d')
+    fpath_arch = Path(fname_tpl.format(ymd))
+    fpath_arch.write_bytes(data_bytes)
+    print(f'Wrote {fpath_arch} .')
+
+    # and update updates file with latest defined Rt_avg value.
+    upd_fname = 'data/rivm_R_updates.csv'
+    upd_df = pd.read_csv(upd_fname).set_index('Date') # column 'Rt_update'
+    # Compare to the last valid Rt record.
+    df_latest = df.loc[~df['Rt_avg'].isna()].iloc[-1:][['Rt_avg']].rename(columns={'Rt_avg': 'Rt_update'})
+    df_latest.index = [df_latest.index[0].strftime('%Y-%m-%d')]
+    df_latest.index.name ='Date'
+    print(f'df_latest:\n{df_latest}')
+    print(f'upd_df:\n{upd_df.iloc[-5:]}')
+
+    print(f'compare: {upd_df.index[-1]!r} {df_latest.index[0]!r}')
+
+    if upd_df.index[-1] < df_latest.index[0]:
+        upd_df = upd_df.append(df_latest)
+        upd_df.to_csv(upd_fname)
+        print(f'Updated {upd_fname} .')
+
+
+
+def load_rivm_R_updates(dates=None):
+    """Load data/rivm_R_updates.csv.
+
+    Optionally select only rows present in 'dates' (should be pd.DateTime
+    at 12:00h on the day).
+
+    Return Series with 'Rt_update' name.
+    """
+    df = pd.read_csv('data/rivm_R_updates.csv')
+    assert list(df.columns) == ['Date', 'Rt_update']
+    df['Date'] = pd.to_datetime(df['Date']) + pd.Timedelta(12, 'h')
+    df = df.set_index('Date')
+
+    if dates is not None:
+        df = df.loc[df.index.isin(dates)]
+        if len(df) == 0:
+            print('Warning: load_rivm_R_updates - no date match.')
+    return df
+
 
 
 def load_Rt_rivm(autoupdate=True, source='rivm'):
@@ -197,7 +242,6 @@ def load_Rt_rivm(autoupdate=True, source='rivm'):
     if source == 'coronawatchnl':
         if autoupdate:
             download_Rt_rivm_coronawatchNL()
-
         df_full = pd.read_csv('data/RIVM_NL_reproduction_index.csv')
         df_full['Datum'] = pd.to_datetime(df_full['Datum']) + pd.Timedelta(12, 'h')
         df = df_full[df_full['Type'] == ('Reproductie index')][['Datum', 'Waarde']].copy()
@@ -205,6 +249,7 @@ def load_Rt_rivm(autoupdate=True, source='rivm'):
         df.rename(columns={'Waarde': 'R'}, inplace=True)
         df['Rmax'] = df_full[df_full['Type'] == ('Maximum')][['Datum', 'Waarde']].set_index('Datum')
         df['Rmin'] = df_full[df_full['Type'] == ('Minimum')][['Datum', 'Waarde']].set_index('Datum')
+        df['Rt_update'] = load_rivm_R_updates(df.index)
         return df
 
     if source == 'rivm':
@@ -223,7 +268,7 @@ def load_Rt_rivm(autoupdate=True, source='rivm'):
 
         # last row may be all-NaN; eliminate such rows.
         df2 = df2.loc[~df2['Rmin'].isna()]
-
+        df2['Rt_update'] = load_rivm_R_updates(df2.index)
         return df2
 
 
@@ -576,7 +621,7 @@ def construct_Dfunc(delays, plot=False):
     return fD, fdD, delay_str
 
 
-def estimate_Rt_series(r, delay=9, Tc=4.0):
+def estimate_Rt_df(r, delay=9, Tc=4.0):
     """Return Rt data, assuming delay infection-reporting.
 
     - r: Series with smoothed new reported cases.
@@ -588,8 +633,7 @@ def estimate_Rt_series(r, delay=9, Tc=4.0):
 
     Return:
 
-    - Series with name 'Rt' (shorter than r by delay+1).
-    - delay_str: delay as string (e.g. '9' or '7-9')
+    - DataFrame with columns 'Rt' and 'delay'.
     """
 
     if not hasattr(delay, '__getitem__'):
@@ -601,32 +645,37 @@ def estimate_Rt_series(r, delay=9, Tc=4.0):
         Rt = np.exp(Tc*log_slope) # (n-2,)
 
         index = r.index[1:-1] - pd.Timedelta(delay, unit='days')
-        return pd.Series(index=index, data=Rt, name='Rt'), f'{delay}'
+        Rdf = pd.DataFrame(
+            dict(delay=pd.Series(index=index, data=Rt, name='Rt'))
+            )
+        Rdf['delay'] = delay
+    else:
+        # the hard case: delay varies over time.
+        # if ri is the rate of infections, tr the reporting date, and D
+        # the delay, then:
+        # ri(tr-D(tr)) = r(tr) / (1 - dD/dt)
+        fD, fdD, _ = construct_Dfunc(delay)
 
-    # the hard case: delay varies over time.
-    # if ri is the rate of infections, tr the reporting date, and D
-    # the delay, then:
-    # ri(tr-D(tr)) = r(tr) / (1 - dD/dt)
-    fD, fdD, delay_str = construct_Dfunc(delay)
+        # note: timestamps in nanoseconds, rates in 'per day' units.
+        day_ns = 86400e9
+        tr = r.index.astype(int)
+        ti = tr - fD(tr) * day_ns
+        ri = r.to_numpy() / (1 - fdD(tr))
 
-    # note: timestamps in nanoseconds, rates in 'per day' units.
-    day_ns = 86400e9
-    tr = r.index.astype(int)
-    ti = tr - fD(tr) * day_ns
-    ri = r.to_numpy() / (1 - fdD(tr))
+        # now get log-derivative the same way as above
+        log_ri = np.log(ri)
+        log_slope = (log_ri[2:] - log_ri[:-2])/2 # (n-2,)
+        Rt = np.exp(Tc*log_slope) # (n-2,)
 
-    # now get log-derivative the same way as above
-    log_ri = np.log(ri)
-    log_slope = (log_ri[2:] - log_ri[:-2])/2 # (n-2,)
-    Rt = np.exp(Tc*log_slope) # (n-2,)
+        # build series with timestamp index
+        Rt_series = pd.Series(
+            data=Rt, name='Rt',
+            index=pd.to_datetime(ti[1:-1].astype(int))
+        )
+        Rdf = pd.DataFrame(dict(Rt=Rt_series))
+        Rdf['delay'] = fD(tr[1:-1])
 
-    # build series with timestamp index
-    Rt_series = pd.Series(
-        data=Rt, name='Rt',
-        index=pd.to_datetime(ti[1:-1].astype(int))
-    )
-
-    return Rt_series, delay_str
+    return Rdf
 
 
 
@@ -992,8 +1041,15 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
         source_col = dict(r7='Delta7r', sg='DeltaSG')[source]
 
         # skip the first 10 days because of zeros
-        Rt, delay_str = estimate_Rt_series(df1[source_col].iloc[10:], delay=delay, Tc=Tc)
-        Rt = Rt.iloc[-ndays:]
+        Rdf = estimate_Rt_df(df1[source_col].iloc[10:], delay=delay, Tc=Tc)
+        Rt = Rdf['Rt'].iloc[-ndays:]
+        delays = Rdf['delay'].iloc[-ndays:]
+        delay_min, delay_max = delays.min(), delays.max()
+        if delay_min == delay_max:
+            delay_str = f'{delay_min:.2g}'
+        else:
+            delay_str = f'{delay_min:.2g}-{delay_max:.2g}'
+
         fmt = 'o'
         psize = 5 if ndays < 30 else 3
 
@@ -1058,10 +1114,9 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
         tm_lo, tm_hi = Rt.index[[0, -1]] # lowest timestamp
         tm_rivm_est = Rt_rivm[Rt_rivm['R'].isna()].index[0] # 1st index with NaN
         # final values
-        Rt_rivm_final = Rt_rivm.loc[tm_lo:tm_rivm_est, 'R']
-        ax.plot(Rt_rivm_final.iloc[:-1], 'k-', label='RIVM')
-        mask_fridays = (Rt_rivm_final.index.dayofweek == 5)
-        ax.plot(Rt_rivm_final.loc[mask_fridays], 'ko', markersize=4)
+        df_Rt_rivm_final = Rt_rivm.loc[tm_lo:tm_rivm_est, ['R', 'Rt_update']]
+        ax.plot(df_Rt_rivm_final.iloc[:-1]['R'], 'k-', label='RIVM')
+        ax.plot(df_Rt_rivm_final.iloc[:-1]['Rt_update'], 'k^', markersize=4, label='RIVM updates')
         # estimates
         Rt_rivm_est = Rt_rivm.loc[tm_rivm_est-pd.Timedelta(1, 'd'):Rt.index[-1]]
         # print(Rt_rivm_est)
@@ -1121,7 +1176,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
             verticalAlignment='top', horizontalAlignment='right',
             rotation=90)
 
-    ax.legend(loc='upper center')
+    ax.legend(loc='upper left')
 
     if mode == 'show':
         fig.canvas.set_window_title(f'Rt ({", ".join(regions)[:30]}, ndays={ndays})')
