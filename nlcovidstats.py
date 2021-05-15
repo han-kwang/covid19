@@ -657,9 +657,10 @@ def estimate_Rt_df(r, delay=9, Tc=4.0):
         fD, fdD, _ = construct_Dfunc(delay)
 
         # note: timestamps in nanoseconds, rates in 'per day' units.
-        day_ns = 86400e9
-        tr = r.index.astype(int)
-        ti = tr - fD(tr) * day_ns
+        # convert timestamps to seconds.
+        day_s = 86400
+        tr = r.index.astype(int) / int(1e9) 
+        ti = tr - fD(tr) * day_s
         ri = r.to_numpy() / (1 - fdD(tr))
 
         # now get log-derivative the same way as above
@@ -670,7 +671,7 @@ def estimate_Rt_df(r, delay=9, Tc=4.0):
         # build series with timestamp index
         Rt_series = pd.Series(
             data=Rt, name='Rt',
-            index=pd.to_datetime(ti[1:-1].astype(int))
+            index=pd.to_datetime(ti[1:-1].astype(int), unit='s')
         )
         Rdf = pd.DataFrame(dict(Rt=Rt_series))
         Rdf['delay'] = fD(tr[1:-1])
