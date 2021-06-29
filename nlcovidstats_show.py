@@ -16,7 +16,7 @@ if __name__ == '__main__':
     show_plots = 'Rtosc,trends,trends-pop,trends-prov,Rt,RtRegion,delay,anomalies,dowcorr'.split(',')
     # Uncomment and change line below to do a selection of plots rather than
     # all of them.
-    # show_plots = 'Rt,dowcorr'.split(',')
+    #show_plots = 'Rt,delay'.split(',')
     nlcs.reset_plots()
     nlcs.init_data(autoupdate=True)
 

@@ -30,7 +30,13 @@ vac_recs = [
     ('2021-04-11', 3.78e6),
     ('2021-04-18', 4.4e6),
     ('2021-05-02', 5.6e6),
-    ('2021-05-15', 7.5e6), # estimate as of 27 Apr.
+    ('2021-05-09', 6.5e6),
+    ('2021-05-23', 8.5e6),
+    ('2021-05-30', 9.4e6),
+    ('2021-06-13', 12.3e6),
+    # Next estimate
+    ('2021-06-27', 15.3e6),
+    ('2021-07-11', 18.0e6),
     ]
 
 vdf = pd.DataFrame.from_records(vac_recs, columns=['Date', 'ncum'])
@@ -88,7 +94,7 @@ for f in np.arange(0.05, 1, 0.05):
         print(f'{t.strftime("%Y-%m-%d")},,{f*100:g}% 1e prik')
     except ValueError:
         break
-
+#%%
 
 
 
@@ -97,7 +103,21 @@ for f in np.arange(0.05, 1, 0.05):
 print(vdf)
 plt.close('all')
 fig, ax = plt.subplots(figsize=(9, 4), tight_layout=True)
-ax.plot(vdf['n1st']/17.4e6 * 100)
-ax.set_ylabel('Percentage eerste prik')
+npop = 17.4e6
+ax.plot(vdf['n1st']/npop * 100, label='eerste prik')
+ax.plot(vdf['ncum']/npop * 100, label='prikken totaal', linestyle='--')
+ax.legend()
+ax.set_title('Vaccinaties COVID-19 Nederland')
+ax.set_ylabel('Percentage van bevolking')
+ax.axvline(pd.to_datetime('now'), color='k')
+ax.text(pd.to_datetime('now') + pd.Timedelta('1 d'), 5, 'Vandaag', rotation=90)
+ymin, ymax = ax.get_ylim()
+
+ax.set_ylim(ymin, ymax)
+
 tools.set_xaxis_dateformat(ax)
+ax2 = ax.twinx()
+ax2.set_ylim(ymin*npop/1e8, ymax*npop/1e8)
+ax2.set_ylabel('Aantal prikken (miljoen)')
+
 fig.show()

@@ -775,7 +775,8 @@ def _add_restriction_labels(ax, tmin, tmax, with_ribbons=True, textbox=False, bo
             res_d = res_d.replace('\\n', '\n')
             # note; with \n in text, alignment gets problematic.
             txt = ax.text(res_t, y_lab, f'  {res_d}', rotation=90, horizontalalignment='center',
-                          verticalalignment='bottom' if bottom else 'top')
+                          verticalalignment='bottom' if bottom else 'top',
+                          fontsize=8)
             if textbox:
                 txt.set_bbox(dict(facecolor='white', alpha=0.4, linewidth=0))
             if pd.isna(res_t_end):

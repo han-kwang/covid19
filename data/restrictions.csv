@@ -27,16 +27,23 @@ Date,Date_stop,Description,Flags
 2021-02-15,2021-02-16,IJzel,CaseGraph
 2021-02-13,2021-02-21,Schoolvak. Zuid
 2021-02-20,2021-02-28,Schoolvak. Mid/Noord
-2021-03-01,,MO deels open
+2021-03-01,,VO deels open
 2021-03-03,,Versoepeling
 2021-03-31,2021-04-28,Avondklok 22:00
 2021-03-23,2021-03-30,Effect zelftests?,RGraph
 2021-03-31,,Zelftests,CaseGraph
 2021-04-27,,Koningsdag
-2021-04-28T,,VERSOEPELINGEN
-2021-05-01,2021-05-09,Schoolvak.
+2021-04-28,,Versoepelingen
+# Meivak. wk17-18 of wk18-19. (steekproef 22 scholen in Nederland)
+2021-04-29,2021-05-13,Schoolvakanties
 2021-05-02,,Ajax-feest
-
+# https://www.rijksoverheid.nl/actueel/nieuws/2021/05/11/stap-2-sportscholen-open-en-buiten-meer-mogelijk
+2021-05-19,,Versoepelingen
+2021-05-31,,VO open
+2021-06-05,,Einde "lockdown".
+2021-06-26,,Einde maatregelen
+2021-07-10,2021-08-22,Schoolvak. Noord
+2021-07-24,2021-09-05,Schoolvak. Zuid
 
 # run calc_vaccinations.py
 2021-02-17,,5% 1e prik
@@ -44,6 +51,10 @@ Date,Date_stop,Description,Flags
 2021-04-14,,15% 1e prik
 2021-04-25,,20% 1e prik
 2021-05-05,,25% 1e prik
-2021-05-14,,30% 1e prik
-
+2021-05-16,,30% 1e prik
+2021-05-28,,35% 1e prik
+2021-06-04,,40% 1e prik
+2021-06-11,,45% 1e prik
+2021-06-18,,50% 1e prik
+2021-06-24,,55% 1e prik
 # EOF
