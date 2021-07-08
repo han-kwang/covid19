@@ -33,28 +33,51 @@ vac_recs = [
     ('2021-05-09', 6.5e6),
     ('2021-05-23', 8.5e6),
     ('2021-05-30', 9.4e6),
-    ('2021-06-13', 12.3e6),
-    # Next estimate
+    ('2021-06-13', 12.4e6),
     ('2021-06-27', 15.3e6),
-    ('2021-07-11', 18.0e6),
+    # Next estimate
+    ('2021-07-11', 18.3e6),
+    ('2021-07-25', 20.6e6),
+    ]
+
+
+# Fully vaccinated from coronadadashboard
+vac_recs_full = [
+    ('2021-01-24', 0),
+    ('2021-02-21', 163e3),
+    ('2021-03-28', 667e3),
+    ('2021-04-18', 993e3),
+    ('2021-05-09', 1.57e6),
+    ('2021-05-23', 2.44e6),
+    ('2021-06-13', 4.48e6),
+    ('2021-06-27', 5.91e6),
+    # extrapolated
+    ('2021-07-11', 7.34e6),
+    ('2021-07-25', 8.77e6),
     ]
 
 vdf = pd.DataFrame.from_records(vac_recs, columns=['Date', 'ncum'])
-vdf['Date'] = pd.to_datetime(vdf['Date'])
-vdf = vdf.set_index('Date')
+fvdf = pd.DataFrame.from_records(vac_recs_full, columns=['Date', 'ncum'])
+
+for df in [vdf, fvdf]:
+    df['Date'] = pd.to_datetime(df['Date'])
+    df.set_index('Date', inplace=True)
+    # interpolate to 1-day resolution
+    f_ncum = scipy.interpolate.interp1d(
+        df.index.to_julian_date(), df['ncum'], bounds_error=False, fill_value='extrapolate')
+
+    end_date = max(pd.to_datetime('now'), df.index[-1])
+    new_df = pd.DataFrame(
+        index=pd.date_range(df.index[0], end_date, freq=pd.Timedelta('1 d'))
+        )
+    new_df['ncum'] = f_ncum(new_df.index.to_julian_date()).astype(int)
+    if df is vdf:
+        vdf = new_df
+    else:
+        fvdf = new_df
 
 
-# interpolate to 1-day resolution
-f_ncum = scipy.interpolate.interp1d(
-    vdf.index.to_julian_date(), vdf['ncum'], bounds_error=False, fill_value='extrapolate')
-
-end_date = max(pd.to_datetime('now'), vdf.index[-1])
-
-
-vdf = pd.DataFrame(
-    index=pd.date_range(vdf.index[0], end_date, freq=pd.Timedelta('1 d'))
-    )
-vdf['ncum'] = f_ncum(vdf.index.to_julian_date()).astype(int)
+#%%
 
 # calculate 1st and second.
 ndays = len(vdf)
@@ -94,13 +117,26 @@ for f in np.arange(0.05, 1, 0.05):
         print(f'{t.strftime("%Y-%m-%d")},,{f*100:g}% 1e prik')
     except ValueError:
         break
-#%%
-
-
-
-
 
 print(vdf)
+#%% label texts for full vaccination
+
+t0 = fvdf.index[0]
+f_f1st = scipy.interpolate.interp1d(
+    fvdf['ncum'].values/17.4e6, np.arange(len(fvdf)), kind='linear',
+    bounds_error=True
+    )
+for f in np.arange(0.05, 1, 0.05):
+    try:
+        t = t0 + f_f1st(f) * pd.Timedelta(1, 'd')
+        print(f'{t.strftime("%Y-%m-%d")},,{f*100:g}% gevaccineerd')
+    except ValueError:
+        break
+
+
+
+
+#%%
 plt.close('all')
 fig, ax = plt.subplots(figsize=(9, 4), tight_layout=True)
 npop = 17.4e6

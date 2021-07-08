@@ -3,7 +3,7 @@
 """
 Created on Sun Jun 27 12:34:25 2021
 
-@author: hnienhuy
+@author: hk_nien @ Twitter
 """
 
 
@@ -57,18 +57,21 @@ def get_variant_dataframe_from_html_table():
     df = df.T
 
     var_map = {
-     'Alfa, B.1.1.7 (Verenigd Koninkrijk) ': 'Alfa',
-     'Alfa B1,1,7 met E484K mutatie ': 'Alfa+E484K',
-     'Beta, B.1.351 (Zuid-Afrika) ': 'Beta',
-     'Gamma, P.1 (Brazilië) ': 'Gamma',
-     'Delta, B.1.617.2 (India) ': 'Delta',
-     'Kappa, B.1.617.1 (India) ': 'Kappa',
-     'Eta, B.1.525 + E484K + F888L ': 'Eta',
-     'B.1.620 ': 'B.1.620',
-     'B.1.621 (Colombia) ': 'B.1.621',
-     'Epsilon, B.1.427/4.29 (Californië) ': 'Epsilon',
-     'Theta P.3 (Filipijnen) ': 'Theta',
-     'B.1.616 (Frankrijk) ': 'B.1.616'
+      'Alfa* (B.1.1.7) ': 'Alfa',
+      'Alfa met E484K mutatie ': 'Alfa+E484K',
+      'Beta (B.1.351)  ': 'Beta',
+      'Gamma (P.1)  ': 'Gamma',
+      'Delta (B.1.617.2) ': 'Delta',
+      'Eta (B.1.525) ': 'Eta',
+      'Epsilon (B.1.427/4.29) ': 'Epsilon',
+      'Theta (P.3) ': 'Theta',
+      'Kappa (B.1.617.1) ': 'Kappa',
+      'Variant Bretagne (B.1.616) ': 'B.1.616',
+      'B.1.620 ': 'B.1.620',
+      'Colombiaanse variant (B.1.621) ': 'B.1.621',
+      'Lambda (C.37) ': 'Lambda',
+      'Iota (B.1.526) ': 'Iota',
+      'Zeta (P.2) ': 'Zeta',
      }
     df.rename(columns=var_map, inplace=True)
     df.drop(columns='Alfa+E484K', inplace=True)  # already counted in Alfa.
@@ -164,7 +167,9 @@ for vname in ['Alfa', 'Gamma', 'Delta']:
     rdf = get_R_variant(vdf, vname)
     # Remove bad data
     rdf.loc[rdf['R_sigma'] > 1, 'R'] = np.nan
-    ax.errorbar(rdf['date_R'], rdf['R'], rdf['R_sigma'], label=vname)
+    ax.errorbar(rdf['date_R'], rdf['R'], rdf['R_sigma'], label=vname,
+                capsize=3
+                )
     ax.scatter(rdf['date_R'], rdf['R'])
 
 # ax.set_ylim(0.5, 2)
@@ -172,6 +177,10 @@ ax.set_ylabel('R')
 ax.set_title('Reproductiegetal per variant (Nederland)\n'
              '(Aanname: generatie-interval 4 dagen)')
 ax.legend(loc='upper left')
+nlcs._add_restriction_labels(ax, rdf['date_R'][0], rdf['date_R'][-1], flagmatch='RGraph')
+
+
+
 
 set_xaxis_dateformat(ax)
 fig.show()

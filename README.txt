@@ -13,7 +13,7 @@ not tested. See requirements.txt for the package versions. There was a
 report of errors with a different pandas version; the other packages
 are less critical (I think).
 
-Here are the Python files:
+Here are the Python files (list is out of date):
 
   casus_analysis.py - module for parsing/analyzing NL casus data.
   chen_airborne_exposure_plot.py - analysis of data on droplet range.
@@ -36,8 +36,9 @@ this by adding nl_NL.UTF-8 in:
 
   sudo dpkg reconfigure-locales
 
-In order to use casus_analysis/process_casus_data, you need to
-download the archive of casus data. In Linux:
+In order to use casus_analysis/process_casus_data (not for plotting
+R values over time), you need to download the archive of casus data.
+In Linux:
 
   cd data-casus
   wget https://github.com/mzelst/covid-19/archive/master.zip
@@ -51,3 +52,5 @@ download the archive of casus data. In Linux:
 
 In Windows, you can download master.zip from the web browser and do
 the other steps from a Git bash shell.
+
+If you have questions, you can contact me via Twitter: @hk_nien.

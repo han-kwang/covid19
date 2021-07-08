@@ -998,7 +998,7 @@ def _add_mobility_data_to_R_plot(ax):
 
 def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
             Tc=4.0, correct_anomalies=True, g_mobility=False, mode='show',
-            ylim=None):
+            ylim=None, only_trendlines=False):
     """Plot R number based on growth/shrink in daily cases.
 
     - lastday: use case data up to this day.
@@ -1015,6 +1015,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
     - g_mobility: include Google mobility data (experimental, not very usable yet).
     - mode: 'show' or 'return_fig'
     - ylim: optional y axis range (ymin, ymax)
+    - only_trendlines: no scatter points, only trend lines.
     """
 
     Rt_rivm = DFS['Rt_rivm']
@@ -1036,7 +1037,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
     if isinstance(regions, str):
         regions = regions.split(',')
 
-    for region, color in zip(regions, colors):
+    for i_region, (region, color) in enumerate(zip(regions, colors)):
 
         df1, _npop = get_region_data(region, lastday=lastday, correct_anomalies=correct_anomalies)
         source_col = dict(r7='Delta7r', sg='DeltaSG')[source]
@@ -1061,8 +1062,9 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
         else:
             label = re.sub('^[A-Z]+:', '', region)
 
-        ax.plot(Rt[:-3], fmt, label=label, markersize=psize, color=color)
-        ax.plot(Rt[-3:], fmt, markersize=psize, color=color, alpha=0.35)
+        if not only_trendlines:
+            ax.plot(Rt[:-3], fmt, label=label, markersize=psize, color=color)
+            ax.plot(Rt[-3:], fmt, markersize=psize, color=color, alpha=0.35)
 
         # add confidence range (ballpark estimate)
         print(region)
@@ -1082,7 +1084,8 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
             Rt_err[-6:] *= np.linspace(1, 1.4, 6)
             ax.fill_between(Rt_smooth.index,
                             Rt_smooth.values-Rt_err, Rt_smooth.values+Rt_err,
-                            color=color, alpha=0.15, zorder=-10)
+                            color=color, alpha=0.15, zorder=-10
+                            )
 
             # This is for posting on Twitter
             Rt_smooth_latest = Rt_smooth.iloc[-1]
@@ -1098,8 +1101,16 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
                   f' Trend: {"+" if slope>=0 else "−"}{abs(slope):.3f} per dag.')
 
 
+        label = None
+
+        if region == 'Nederland':
+            label = 'R trend Nederland'
+        elif only_trendlines:
+            label = re.sub('^.*:', '', region)
+
         smooth_line = ax.plot(Rt_smooth[:-5], color=color, alpha=1, zorder=0,
-                              label=('R trend Nederland' if region=='Nederland' else None)
+                              linestyle=('-' if i_region < 10 else '-.'),
+                              label=label
                               )
         ax.plot(Rt_smooth[-6:], color=color, alpha=1, zorder=0,
                 linestyle='--', dashes=(2,2))

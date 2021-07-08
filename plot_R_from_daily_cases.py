@@ -10,7 +10,19 @@ import tools
 import nlcovidstats as nlcs
 import pandas as pd
 
-#%%
+city_list = [
+    'Nederland', 'Amsterdam', 'Rotterdam', "'s-Gravenhage", 'Utrecht',
+    'Eindhoven', 'Groningen', 'Tilburg', 'Enschede'
+    ]
+province_list = [
+    'Zuid-Holland', 'Noord-Holland', 'Noord-Brabant', 'Gelderland',
+   'Utrecht', 'Overijssel', 'Limburg', 'Friesland', 'Groningen', 'Drenthe',
+   'Flevoland', 'Zeeland'
+   ]
+province_list = [f'P:{x}' for x in province_list]
+
+
+#%%g
 if __name__ == '__main__':
 
     nlcs.download_Rt_rivm(force=True)
@@ -20,8 +32,10 @@ if __name__ == '__main__':
     print('--Corrected data--')
     nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True)
     #nlcs.plot_Rt(ndays=200, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True)
-    #nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
-    #             regions=['Nederland', 'Amsterdam'])
+    nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
+                 regions=city_list, only_trendlines=True)
+    nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
+                 regions=province_list, only_trendlines=True)
     #print('--Raw data--')
     #nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=False)
     tools.pause_commandline()
@@ -29,6 +43,30 @@ if __name__ == '__main__':
     #%% Holiday regions
     # nlcs.plot_Rt(regions=['HR:Midden+Noord', 'HR:Zuid'],
     #              ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True)
+
+    #%%
+    plt.close('all')
+    nlcs.plot_daily_trends(45, region_list=city_list)
+
+    nlcs.plot_daily_trends(45, region_list=province_list)
+    #%%
+    univ_towns = [
+         'Amsterdam',
+         'Rotterdam',
+         'Utrecht',
+         'Eindhoven',
+         'Groningen',
+         'Tilburg',
+         'Nijmegen',
+         'Enschede',
+         'Leiden',
+         'Maastricht',
+         'Delft',
+         'Wageningen'
+         ]
+    nlcs.plot_daily_trends(
+        30,  region_list=['Nederland'] + univ_towns
+    )
 
 
     #%% anomalies

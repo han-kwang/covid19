@@ -46,15 +46,14 @@ Date,Date_stop,Description,Flags
 2021-07-24,2021-09-05,Schoolvak. Zuid
 
 # run calc_vaccinations.py
-2021-02-17,,5% 1e prik
-2021-03-30,,10% 1e prik
-2021-04-14,,15% 1e prik
-2021-04-25,,20% 1e prik
-2021-05-05,,25% 1e prik
-2021-05-16,,30% 1e prik
-2021-05-28,,35% 1e prik
-2021-06-04,,40% 1e prik
-2021-06-11,,45% 1e prik
-2021-06-18,,50% 1e prik
-2021-06-24,,55% 1e prik
+2021-04-10,,5% gevaccineerd
+2021-05-11,,10% gevaccineerd
+2021-05-24,,15% gevaccineerd
+2021-06-02,,20% gevaccineerd
+2021-06-11,,25% gevaccineerd
+2021-06-20,,30% gevaccineerd
+2021-06-28,,35% gevaccineerd
+2021-07-07,,40% gevaccineerd
+2021-07-15,,45% gevaccineerd
+2021-07-24,,50% gevaccineerd
 # EOF
