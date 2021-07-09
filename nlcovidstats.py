@@ -663,7 +663,7 @@ def estimate_Rt_df(r, delay=9, Tc=4.0):
         ri = r.to_numpy() / (1 - fdD(tr))
 
         # now get log-derivative the same way as above
-        log_ri = np.log(ri)
+        log_ri = np.log(np.where(ri==0, np.nan, ri))
         log_slope = (log_ri[2:] - log_ri[:-2])/2 # (n-2,)
         Rt = np.exp(Tc*log_slope) # (n-2,)
 
