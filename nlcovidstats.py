@@ -612,7 +612,7 @@ def construct_Dfunc(delays, plot=False):
             ts[0],
             int(pd.to_datetime('now').to_datetime64())
             )
-        ax.plot(pd.to_datetime(tsx.astype(int)), fD(tsx))
+        ax.plot(pd.to_datetime(tsx.astype(np.int64)), fD(tsx))
         ax.set_ylabel('Vertraging (dagen)')
         tools.set_xaxis_dateformat(ax, 'Rapportagedatum')
         fig.canvas.set_window_title('Vertraging infectiedatum - rapportage')
@@ -668,9 +668,11 @@ def estimate_Rt_df(r, delay=9, Tc=4.0):
         Rt = np.exp(Tc*log_slope) # (n-2,)
 
         # build series with timestamp index
+        # (Note: int64 must be specified explicitly in Windows, 'int' will be
+        # int32.)
         Rt_series = pd.Series(
             data=Rt, name='Rt',
-            index=pd.to_datetime(ti[1:-1].astype(int))
+            index=pd.to_datetime(ti[1:-1].astype(np.int64))
         )
         Rdf = pd.DataFrame(dict(Rt=Rt_series))
         Rdf['delay'] = fD(tr[1:-1])
