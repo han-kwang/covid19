@@ -19,7 +19,7 @@ province_list = [
    'Utrecht', 'Overijssel', 'Limburg', 'Friesland', 'Groningen', 'Drenthe',
    'Flevoland', 'Zeeland'
    ]
-province_list = [f'P:{x}' for x in province_list]
+province_list = ['Nederland'] + [f'P:{x}' for x in province_list]
 
 
 #%%g

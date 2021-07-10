@@ -1168,9 +1168,19 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
     # setup the x axis before adding y2 axis.
     tools.set_xaxis_dateformat(ax, maxticks=10)
 
-    # get second y axis
+    # get second y axis with doubling times.
+    # Adjust values shown depending on scale range.
     ax2 = ax.twinx()
-    T2s = np.array([-2, -4,-7, -10, -14, -21, -60, 9999, 60, 21, 14, 10, 7, 4, 2])
+    T2s = np.array([
+        -60, -21, -14, -10, -7, -4, -3,
+        9999,
+        60, 21, 14, 10, 7, 4, 3, 2.5, 2.2, 2, 1.8, 1.7, 1.6, 1.5, 1.4, 1.3
+        ])
+    Rmax = ax.get_ylim()[1] # highest R value
+    if Rmax > 2:
+        T2s = T2s[(np.abs(T2s) < 10) | (T2s==9999)]
+    T2s = np.concatenate(([], T2s))
+
     y2ticks = 2**(Tc/T2s)
     y2labels = [f'{t2 if t2 != 9999 else "∞"}' for t2 in T2s]
     ax2.set_yticks(y2ticks)
