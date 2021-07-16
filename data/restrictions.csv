@@ -44,7 +44,7 @@ Date,Date_stop,Description,Flags
 2021-06-26,,Einde maatregelen
 2021-06-30,,Evenementen mogen
 2021-07-10,,Stop dansen/nachthoreca
-2021-07-10,2021-08-22,Schoolvak. Noord
+2021-07-12,2021-08-22,Schoolvak. Noord
 2021-07-24,2021-09-05,Schoolvak. Zuid
 
 # run calc_vaccinations.py

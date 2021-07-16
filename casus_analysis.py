@@ -264,7 +264,7 @@ def download_rivm_casus_files(force_today=False):
 
     if len(fdates_missing) > 10:
         input(f'Warning: do you really want to download {len(fdates_missing)}'
-              'huge data files? Ctrl-C to abort, ENTER to continue.')
+              ' huge data files? Ctrl-C to abort, ENTER to continue.')
     else:
         print(f'Will attempt to download case data for {len(fdates_missing)} days.')
 
@@ -1121,3 +1121,5 @@ def get_reporting_delay(df, initial_delay=7, end_trunc=4, start_trunc=5, plot=Tr
         fig.show()
 
     return delays_d
+
+

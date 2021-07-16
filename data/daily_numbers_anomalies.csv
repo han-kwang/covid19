@@ -31,4 +31,9 @@ Date_report,fraction,days_back,reference
 2021-05-03,0.25,-1
 # Storing 17 mei.
 2021-05-18,0.23,-1
+# 11 juli: "Door een achterstand in administratie valt het cijfer vandaag lager uit dan het werkelijk is."
+# https://coronadashboard.rijksoverheid.nl/landelijk/positief-geteste-mensen
+# Maar ook: Besmettingscijfer valt toch niet lager uit
+# https://nos.nl/liveblog/2388837-bijna-9400-nieuwe-besmettingen-cijfer-valt-lager-uit-gommers-had-excuses-rutte-verwacht#UPDATE-container-54441768
+# 2021-07-12,-0.2,-1
 # EOF

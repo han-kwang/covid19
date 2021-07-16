@@ -50,6 +50,9 @@ DELAY_INF2REP = [
     ('2020-12-01', 6.5),
     ('2021-02-15', 6.5),
     ('2021-04-05', 4),
+    ('2021-07-06', 4),
+    ('2021-07-13', 5),
+    ('2021-07-20', 5),
     ]
 
 # this will contain dataframes, initialized by init_data().
@@ -561,12 +564,12 @@ def construct_Dfunc(delays, plot=False):
 
     Parameter:
 
-    - delays: tuples (time_report, delay_days)
+    - delays: tuples (datetime_report, delay_days)
     - plot: whether to generate a plot.
 
     Return:
 
-    - fD: interpolation function for D(t) with t in nanoseconds.
+    - fD: interpolation function for D(t) with t in nanoseconds since epoch.
     - fdD: interpolation function for dD/dt.
       (taking time in ns but returning dD per day.)
     - delay_str: delay string e.g. '7' or '7-9'
@@ -656,7 +659,7 @@ def estimate_Rt_df(r, delay=9, Tc=4.0):
         # ri(tr-D(tr)) = r(tr) / (1 - dD/dt)
         fD, fdD, _ = construct_Dfunc(delay)
 
-        # note: timestamps in nanoseconds, rates in 'per day' units.
+        # note: timestamps in nanoseconds since epoch, rates in 'per day' units.
         day_ns = 86400e9
         tr = r.index.astype(int)
         ti = tr - fD(tr) * day_ns
