@@ -30,12 +30,13 @@ if __name__ == '__main__':
     nlcs.reset_plots()
     nlcs.init_data(autoupdate=True)
     print('--Corrected data--')
+    nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)
     nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True)
     #nlcs.plot_Rt(ndays=200, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True)
-    nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
-                 regions=city_list, only_trendlines=True)
-    nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
-                 regions=province_list, only_trendlines=True)
+    #nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
+    #             regions=city_list, only_trendlines=True)
+    #nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
+    #             regions=province_list, only_trendlines=True)
     #print('--Raw data--')
     #nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=False)
     tools.pause_commandline()

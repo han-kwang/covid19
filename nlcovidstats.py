@@ -643,13 +643,12 @@ def estimate_Rt_df(r, delay=9, Tc=4.0):
         # simple delay - attach data to index with proper offset
         log_r = np.log(r.to_numpy()) # shape (n,)
         assert len(log_r.shape) == 1
-
         log_slope = (log_r[2:] - log_r[:-2])/2 # (n-2,)
         Rt = np.exp(Tc*log_slope) # (n-2,)
 
         index = r.index[1:-1] - pd.Timedelta(delay, unit='days')
         Rdf = pd.DataFrame(
-            dict(delay=pd.Series(index=index, data=Rt, name='Rt'))
+            dict(Rt=pd.Series(index=index, data=Rt, name='Rt'))
             )
         Rdf['delay'] = delay
     else:
