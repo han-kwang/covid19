@@ -22,7 +22,7 @@ province_list = [
 province_list = ['Nederland'] + [f'P:{x}' for x in province_list]
 
 
-#%%g
+#%% R graph for daily Twitter update
 if __name__ == '__main__':
 
     nlcs.download_Rt_rivm(force=True)
@@ -31,25 +31,22 @@ if __name__ == '__main__':
     nlcs.init_data(autoupdate=True)
     print('--Corrected data--')
     nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)
-    nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True)
+    nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
+                 ylim=(0.5, 2.0))
+    #%% R graph of cities, provinces
     #nlcs.plot_Rt(ndays=200, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True)
-    #nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
-    #             regions=city_list, only_trendlines=True)
-    #nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
-    #             regions=province_list, only_trendlines=True)
+    nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
+                 regions=city_list, only_trendlines=True)
+    nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
+                 regions=province_list, only_trendlines=True)
     #print('--Raw data--')
     #nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=False)
-    tools.pause_commandline()
 
-    #%% Holiday regions
-    # nlcs.plot_Rt(regions=['HR:Midden+Noord', 'HR:Zuid'],
-    #              ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True)
-
-    #%%
     plt.close('all')
     nlcs.plot_daily_trends(45, region_list=city_list)
 
     nlcs.plot_daily_trends(45, region_list=province_list)
+    tools.pause_commandline()
     #%%
     univ_towns = [
          'Amsterdam',

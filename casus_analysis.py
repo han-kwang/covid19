@@ -179,6 +179,9 @@ def load_casus_data(date):
 def load_casus_summary(date):
     """Return summary dataframe for this date.
 
+    This will reload an RIVM casus dataset. This is slow (few seconds
+    for dates in 2021).
+
     Date format: 'yyyy-mm-dd'.
 
     Return DataFrame colomns:
@@ -303,11 +306,33 @@ def _load_one_df(date):
     print('.', end='', flush=True)
     return load_casus_summary(date).reset_index()
 
-def load_merged_summary(date_lo, date_hi):
+def load_merged_summary(date_lo, date_hi, reprocess='auto'):
     """Return merged summary DataFrame between two yyyy-mm-dd file dates.
 
-    It loads from the csv file as created by create_merged_summary_csv().
+    Parameters:
+
+    - date_lo, date_hi: lowest, highest date_file ('yyyy-mm-dd').
+      (no hours/minutes)
+    - reprocess: True to reprocess all raw data (slow), False to use only
+      preprocessed data (data/casus_history_summary.csv),
+      'auto' to combine preexisting data if available.
+
+    Return: DataFrame with columns: Date_statistics, Date_file, DON, DOO, DPL,
+    Dtot.
     """
+    assert reprocess in [True, False, 'auto']
+
+    if reprocess in (False, 'auto'):
+        dfs_old = load_merged_summary_csv(date_lo, date_hi)
+        # multiindex -> columns
+        dfs_old.reset_index(inplace=True)
+        n_old_file = len(dfs_old['Date_file'].unique())
+        print(f'Loaded already-preprocessed {n_old_file} file dates.')
+        if not reprocess:
+            return dfs_old
+
+    if reprocess == 'auto' and len(dfs_old) > 0:
+        date_lo = dfs_old['Date_file'].max() + pd.Timedelta(1, 'd')
 
     # Build list of file dates to read
     date_lo = pd.to_datetime(date_lo)
@@ -325,14 +350,21 @@ def load_merged_summary(date_lo, date_hi):
         fdates.append(date_str)
         date += pd.Timedelta(1, 'd')
 
-    msg = f'Loading casus data for {len(fdates)} days (using {{ncpu}} processes)'
-    with PoolNCPU(msg) as pool:
-        dfsums = pool.map(_load_one_df, fdates)
-        print()
+    if len(fdates) > 0:
+        msg = f'Loading casus data for {len(fdates)} days (using {{ncpu}} processes)'
+        with PoolNCPU(msg) as pool:
+            dfsums = pool.map(_load_one_df, fdates)
+            print()
+    if reprocess == 'auto':
+        dfsums.insert(0, dfs_old)
+
+    if len(dfsums) == 0:
+        raise ValueError('No data.')
     dfsmerged = pd.concat(dfsums)
+
     return dfsmerged
 
-def create_merged_summary_csv(date_lo='2020-07-01'):
+def create_merged_summary_csv(date_lo='2020-07-01', reprocess='auto'):
     """Load lots fo data, write to data/casus_history_summary.csv.
 
     See load_merged_sumarray() for column layout.

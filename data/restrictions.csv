@@ -43,6 +43,7 @@ Date,Date_stop,Description,Flags
 2021-06-05,,Einde "lockdown".
 2021-06-26,,Einde maatregelen
 2021-06-30,,Evenementen mogen
+2021-07-01,,Piek R=4.0
 2021-07-10,,Stop dansen/nachthoreca
 2021-07-12,2021-08-22,Schoolvak. Noord
 2021-07-24,2021-09-05,Schoolvak. Zuid
@@ -55,7 +56,7 @@ Date,Date_stop,Description,Flags
 2021-06-11,,25% gevaccineerd
 2021-06-20,,30% gevaccineerd
 2021-06-28,,35% gevaccineerd
-2021-07-07,,40% gevaccineerd
-2021-07-15,,45% gevaccineerd
-2021-07-24,,50% gevaccineerd
+2021-07-09,,40% gevaccineerd
+2021-07-17,,45% gevaccineerd
+2021-07-26,,50% gevaccineerd
 # EOF

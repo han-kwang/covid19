@@ -51,8 +51,9 @@ DELAY_INF2REP = [
     ('2021-02-15', 6.5),
     ('2021-04-05', 4),
     ('2021-07-06', 4),
-    ('2021-07-13', 5),
-    ('2021-07-20', 5),
+    ('2021-07-15', 5),
+    ('2021-07-23', 4),
+    ('2021-07-30', 4),
     ]
 
 # this will contain dataframes, initialized by init_data().
@@ -618,7 +619,9 @@ def construct_Dfunc(delays, plot=False):
         ax.plot(pd.to_datetime(tsx.astype(np.int64)), fD(tsx))
         ax.set_ylabel('Vertraging (dagen)')
         tools.set_xaxis_dateformat(ax, 'Rapportagedatum')
-        fig.canvas.set_window_title('Vertraging infectiedatum - rapportage')
+        title = 'Vertraging = t_rapportage - t_infectie - t_generatie/2'
+        fig.canvas.set_window_title(title)
+        ax.set_title(title)
         fig.show()
 
     return fD, fdD, delay_str
