@@ -19,6 +19,24 @@ import nlcovidstats as nlcs
 from tools import set_xaxis_dateformat
 
 
+def smoothen(data, kernel):
+    """Convolve data with odd-size kernel, with boundary handling."""
+
+    n, = kernel.shape
+    assert n % 2 == 1
+    m = (n-1) // 2
+    # pad input data
+    k = m//2 + 1
+    data_padded = np.concatenate([
+        np.full(m, data[:k].mean()),
+        data,
+        np.full(m, data[-k:].mean())
+        ])
+    smooth = np.convolve(data_padded, kernel, mode='same')[m:-m]
+    assert smooth.shape == data.shape
+    return smooth
+
+
 def gauss_smooth(data, n=11, sigma=1.67):
     """Apply gaussian smoothing kernel on data array.
 
@@ -37,52 +55,64 @@ def gauss_smooth(data, n=11, sigma=1.67):
     kernel = np.exp(-0.5/sigma**2 * xs**2)
     kernel /= kernel.sum()
 
-    # pad input data
-    k = m//2 + 1
-    data_padded = np.concatenate([
-        np.full(m, data[:k].mean()),
-        data,
-        np.full(m, data[-k:].mean())
-        ])
-    smooth = np.convolve(data_padded, kernel, mode='same')[m:-m]
-    assert smooth.shape == data.shape
+    smooth = smoothen(data, kernel)
     return smooth
 
 
-def calc_Rjbf(cdf, Tgen=4, Tdelay=0, sm_preset=1, update_cdf=True):
+def calc_Rjbf(cdf, Tgen=4, Tdelay=0, sm_preset=1, update_cdf=True, dt_dpl=0):
     """Calculate R_jbf:
 
     Parameters:
 
-    - cdf: casus DataFrame
+    - cdf: casus DataFrame with index Date_statistics, columns
+      DON, DPL, DOO.
     - Tgen: generation interval (integer days)
     - Tdelay: additional time shift (integer days)
-    - sm_preset: smoothing-parameter preset (int)
+    - sm_preset: smoothing-parameter preset (int), see source code.
     - update_cdf: True to add columns 'Dsm' and 'Rt' to cdf.
+    - dt_dpl: time offset (int days) of DPL data
 
     Return:
 
     - Dsm: smoothed daily cases Series - same index as cdf.
     - Rt: reproduction number as Series - same index.
-    - sm_n: Smoothing n
-    - sm_sigma: Smoothing sigma
+    - sm_desc: Smoothing description str
     """
 
     # Apply smoothing to total cases (Dtot)
     # Smoothing parameters, various combinations (n, sigma)
     # Larger sigma = more agressive smoothing.
     sm_presets = [
+        # Gaussian kernels
         (13, 2.1),
         (11, 2.1), # This works well
         (9, 2.1),
-        (7, 2.8)
-        ]
-    sm_n, sm_sigma = sm_presets[sm_preset]  # pick
+        (7, 2.8),
+        # Custom kernelsf'Gaussian, n={sm_n}, σ={sm_sigma:.3g}'
+        np.array([0.00210191, 0.03323479, 0.02142772, 0.07180504, 0.14321991,
+                  0.18248858, 0.19054455, 0.17576429, 0.09342508, 0.05432827,
+                  0.02243447, 0.00861231, 0.00061307])
 
-    Dsm = pd.Series(
-        gauss_smooth(cdf['Dtot'].values, sm_n, sm_sigma),
-        index=cdf.index
+        ]
+    sm_preset = sm_presets[sm_preset]
+    fdate = cdf.index[-1]
+
+    Dtot = cdf['DOO'] + cdf['DON']
+    dpl = cdf['DPL']
+    dpl = dpl.shift(
+        dt_dpl,
+        fill_value=dpl.iloc[0 if dt_dpl>0 else -1]
         )
+    Dtot += dpl
+
+    if isinstance(sm_preset, tuple):
+        sm_n, sm_sigma = sm_preset
+        Dsm = gauss_smooth(Dtot.values, sm_n, sm_sigma)
+        sm_desc = f'Gaussian, n={sm_n}, σ={sm_sigma:.3g}'
+    else:
+        Dsm = smoothen(Dtot.values, sm_preset)
+        sm_desc = f'Speciale kernel, n={len(sm_preset)}'
+    Dsm = pd.Series(Dsm, index=cdf.index)
 
     # Estimate R value 'JBF method'.
 
@@ -109,24 +139,22 @@ def calc_Rjbf(cdf, Tgen=4, Tdelay=0, sm_preset=1, update_cdf=True):
         cdf['Dsm'] = Dsm
         cdf['Rt'] = Rt_series
 
-    return Dsm, Rt_series, sm_n, sm_sigma
+    return Dsm, Rt_series, sm_desc
 
-if __name__ == '__main__':
+def get_cdf(fdate=None):
+    """Return casus DataFrame for 1 day (yyyy-mm-dd, defaulrt most recent).
 
-    if 0:
-        # Run this manually, interactively to refresh data.
-        # (Slow, don't do this automatically.)
-        ca.create_merged_summary_csv()
+    Index as datetime at 12:00.
+    """
 
-    yesterday = (pd.to_datetime('now') - pd.Timedelta(1, 'd')).strftime('%Y-%m-%d')
-    cdf = ca.load_merged_summary(yesterday, '2099-01-01')
+    if fdate:
+        cdf = ca.load_merged_summary(fdate, fdate, reprocess=False)
+    else:
+        # most recent
+        yesterday = (pd.to_datetime('now') - pd.Timedelta(1, 'd')).strftime('%Y-%m-%d')
+        cdf = ca.load_merged_summary(yesterday, '2099-01-01', reprocess=False)
+
     fdate = cdf.iloc[-1]['Date_file']
-
-
-    if 0:
-        # TEST - Behavior for other cutoff dates.
-        cdf = ca.load_merged_summary(*(('2021-05-01',)*2))  # TEST
-        fdate = cdf.iloc[-1]['Date_file']
 
 
     # Dataframe with DON/DOO/DPL counts for most recent file date and all
@@ -139,10 +167,104 @@ if __name__ == '__main__':
 
     cdf.set_index('Date_statistics', inplace=True)
 
+    return cdf
+
+def infer_smoothing_kernel_rivm(ts_lo='2020-08-08', ts_hi='2021-06-15',
+                                nk=13, plot=True):
+    """Find best smoothing kernel for RIVM data.
+
+    Parameters:
+
+    - ts_lo: date_statistics low
+    - ts_hi: date_statistics high
+    - nk: kernel size (odd) to fit.
+    - plot: True to generate a plot.
+
+    Return:
+
+    - ker: kernel, array shape (nk,).
+    """
+    assert nk % 2 == 1
+    Tgen = 4
+    ts_lo, ts_hi = [pd.to_datetime(x) + pd.Timedelta(Tgen+0.5, 'd') for x in [ts_lo, ts_hi]]
+    cdf = get_cdf()
+    cdf['Dsm'] = gauss_smooth(cdf['Dtot'])
+    cdf = cdf.loc[ts_lo:ts_hi]
+    cdf['R_rivm'] = nlcs.load_Rt_rivm(False)['R']
+
+    # Reconstruct Dsm counts by applying R_rivm repeatedly.
+    cdf['Dreco'] = cdf['Dsm'].copy()
+    for i in range(Tgen, len(cdf)):
+        idxa, idxb = cdf.index[[i-Tgen, i]]
+        nreco = cdf.at[idxa, 'Dreco'] * cdf.at[idxa, 'R_rivm']
+        # This is to dampen out differences from rounding errors
+        f = 0.25
+        nreco = (1-f)*nreco + f*cdf.at[idxb, 'Dsm']
+        cdf.loc[idxb, 'Dreco'] = nreco
+
+    if plot:
+        fig, ax = plt.subplots()
+        for col in ['Dsm', 'Dreco']:
+            ax.plot(cdf[col], label=col)
+        ax.legend()
+        set_xaxis_dateformat(ax)
+        fig.show()
+
+    # Construct smoothing kernel K
+    # Solve y = X*k for k.
+    n = len(cdf)
+    m = (nk - 1)//2
+    X = np.zeros((n-2*m, nk))
+    y = cdf['Dreco'].values[m:-m]
+    x = cdf['Dtot'].values
+    for i in range(n - 2*m):
+        X[i, :] = x[i:i+nk]
+
+    # Regularize to equal sums on all rows, so that periods with low
+    # and high case counts get the same weight.
+    rfac = 1/X.sum(axis=1)
+    X *= rfac.reshape(-1, 1)
+    y *= rfac
+
+    ker, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+    ker /= ker.sum()
+
+    if plot:
+        fig, ax = plt.subplots()
+        ax.stem(np.arange(-m, m+1), ker, markerfmt='o', use_line_collection=True,
+                basefmt='')
+        ax.set_title('Inferred smoothing kernel')
+        fig.show()
+
+    return ker
+
+
+
+
+#%%
+
+
+def calc_plot_Rjbf(fdate=None, Tgen=4, Tdelay=0, sm_preset=1, dt_dpl=0):
+    """Calculate R_jbf and plot.
+
+    Parameters:
+
+    - fdate: casus file date ('yyyy-mm-dd'); default: most recent.
+    - Tgen: generation interval (integer days)
+    - Tdelay: additional time shift (integer days)
+    - sm_preset: smoothing-parameter preset (int), see source code of calc_Rjbf.
+    - dt_dpl: time offset (int days) of DPL data
+
+    Return:
+
+    - cdf: DataFrame with date index, columns a.o. Dtot, Dsm, Rt.
+    """
+    cdf = get_cdf(fdate)
+    # This adds 'Dsm', 'Rt' columns to cdf.
     Tgen, Tdelay = 4, 0
-    _, _, sm_n, sm_sigma = calc_Rjbf(
-        cdf, Tgen, Tdelay, sm_preset=1
-        )  # This adds 'Dsm', 'Rt' columns.
+    _, _, sm_desc = calc_Rjbf(
+        cdf, Tgen, Tdelay, sm_preset=sm_preset, dt_dpl=0
+        )
 
     # RIVM R series: index=Datum (12:00)
     R_rivm = nlcs.load_Rt_rivm(False)['R']
@@ -150,14 +272,13 @@ if __name__ == '__main__':
 
     row_select = (cdf.index >= '2020-08-01')
 
-    plt.close('all')
     fig, (axC, axR1, axR2, axDR) = plt.subplots(
         4, 1, figsize=(7, 9),
         tight_layout=True, sharex=True
         )
 
     xdates = cdf.index[row_select]  # Dates on x axis
-    axC.set_title(f'Gauss \'smoothing\', n={sm_n}, σ={sm_sigma}')
+    axC.set_title(f'Smoothing: {sm_desc}')
     axC.semilogy(xdates, cdf.loc[row_select, 'Dtot'], label='Casus DOO+DPL+DON')
     axC.semilogy(xdates, cdf.loc[row_select, 'Dsm'], label='Casus Dxx, smooth')
     axC.legend()
@@ -189,3 +310,17 @@ if __name__ == '__main__':
     ax.set_xlabel('Datum')
     fig.show()
 
+    return cdf
+
+
+if __name__ == '__main__':
+
+    if 0:
+        # Run this manually, interactively to refresh data.
+        # (Slow, don't do this automatically.)
+        ca.create_merged_summary_csv()
+
+    plt.close('all')
+    infer_smoothing_kernel_rivm()
+    calc_plot_Rjbf('2021-06-15')
+    calc_plot_Rjbf('2021-06-15', sm_preset=4)
