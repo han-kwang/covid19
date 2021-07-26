@@ -49,6 +49,68 @@ def gauss_smooth(data, n=11, sigma=1.67):
     return smooth
 
 
+def calc_Rjbf(cdf, Tgen=4, Tdelay=0, sm_preset=1, update_cdf=True):
+    """Calculate R_jbf:
+
+    Parameters:
+
+    - cdf: casus DataFrame
+    - Tgen: generation interval (integer days)
+    - Tdelay: additional time shift (integer days)
+    - sm_preset: smoothing-parameter preset (int)
+    - update_cdf: True to add columns 'Dsm' and 'Rt' to cdf.
+
+    Return:
+
+    - Dsm: smoothed daily cases Series - same index as cdf.
+    - Rt: reproduction number as Series - same index.
+    - sm_n: Smoothing n
+    - sm_sigma: Smoothing sigma
+    """
+
+    # Apply smoothing to total cases (Dtot)
+    # Smoothing parameters, various combinations (n, sigma)
+    # Larger sigma = more agressive smoothing.
+    sm_presets = [
+        (13, 2.1),
+        (11, 2.1), # This works well
+        (9, 2.1),
+        (7, 2.8)
+        ]
+    sm_n, sm_sigma = sm_presets[sm_preset]  # pick
+
+    Dsm = pd.Series(
+        gauss_smooth(cdf['Dtot'].values, sm_n, sm_sigma),
+        index=cdf.index
+        )
+
+    # Estimate R value 'JBF method'.
+
+    Rs = Dsm.iloc[Tgen:].values / Dsm.iloc[:-Tgen].values
+    idx_R = cdf.index[:-Tgen]
+    if Tdelay != 0:
+        idx_R = idx_R - pd.Timedelta(int(Tdelay), 'd')
+        if Tdelay > 0:
+            idx_R = idx_R[Tdelay:]
+            Rs = Rs[Tdelay:]
+        else:
+            idx_R = idx_R[:Tdelay]
+            Rs = Rs[:Tdelay]
+
+
+    Rt_series = pd.Series(np.nan, index=cdf.index)
+    Rt_series.loc[idx_R] = Rs
+
+    # Data gets progressively unreliable for less than 14 days ago.
+    # Cutoff at 10 days.
+    Rt_series.loc[cdf.index >= fdate - pd.Timedelta(10, 'd')] = np.nan
+
+    if update_cdf:
+        cdf['Dsm'] = Dsm
+        cdf['Rt'] = Rt_series
+
+    return Dsm, Rt_series, sm_n, sm_sigma
+
 if __name__ == '__main__':
 
     if 0:
@@ -67,9 +129,8 @@ if __name__ == '__main__':
         fdate = cdf.iloc[-1]['Date_file']
 
 
-
     # Dataframe with DON/DOO/DPL counts for most recent file date and all
-    # Date_statistics since the July 2020, ignore last 3 days
+    # Date_statistics since the July 2020, ignore last 3 daysTgen=4, Tdelay=0,Tgen=4, Tdelay=0,
     cdf = cdf.loc[cdf['Date_file'] == fdate]
     cdf = cdf.loc[cdf['Date_statistics'] >= '2020-07-01'].iloc[:-3].copy()
     cdf.drop(columns='Date_file', inplace=True)
@@ -78,44 +139,10 @@ if __name__ == '__main__':
 
     cdf.set_index('Date_statistics', inplace=True)
 
-
-
-
-    # Apply smoothing to total cases (Dtot)
-    # Smoothing parameters, various combinations (n, sigma)
-    # Larger sigma = more agressive smoothing.
-    sm_params = [
-        (13, 2.1),
-        (11, 2.1), # This works well
-        (9, 2.1),
-        (7, 2.8)
-        ]
-
-    sm_n, sm_sigma = sm_params[1]  # pick one
-
-    cdf['Dsm'] = gauss_smooth(cdf['Dtot'].values, sm_n, sm_sigma)
-
-    # Estimate R value 'JBF method'.
-    Tgen = 4  # generation interval (integer days)
-    Tdelay = 0  # additional time shift (integer days)
-
-    Rs = cdf.iloc[Tgen:]['Dsm'].values / cdf.iloc[:-Tgen]['Dsm'].values
-    cdf['Rt'] = np.nan
-    idx_R = cdf.index[:-Tgen]
-    if Tdelay != 0:
-        idx_R = idx_R - pd.Timedelta(int(Tdelay), 'd')
-        if Tdelay > 0:
-            idx_R = idx_R[Tdelay:]
-            Rs = Rs[Tdelay:]
-        else:
-            idx_R = idx_R[:Tdelay]
-            Rs = Rs[:Tdelay]
-    cdf.loc[idx_R, 'Rt'] = Rs
-
-    # Data gets progressively unreliable for less than 14 days ago.
-    # Cutoff at 10 days.
-    cdf.loc[cdf.index >= fdate - pd.Timedelta(10, 'd'), 'Rt'] = np.nan
-
+    Tgen, Tdelay = 4, 0
+    _, _, sm_n, sm_sigma = calc_Rjbf(
+        cdf, Tgen, Tdelay, sm_preset=1
+        )  # This adds 'Dsm', 'Rt' columns.
 
     # RIVM R series: index=Datum (12:00)
     R_rivm = nlcs.load_Rt_rivm(False)['R']
