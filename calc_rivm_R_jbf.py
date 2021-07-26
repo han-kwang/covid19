@@ -37,13 +37,14 @@ def smoothen(data, kernel):
     return smooth
 
 
-def gauss_smooth(data, n=11, sigma=1.67):
+def gauss_smooth(data, n=11, sigma=1.67, mu=0.0):
     """Apply gaussian smoothing kernel on data array.
 
     Parameters:
 
     - n: window size (should be odd)
     - sigma: standard deviation of the window.
+    - mu: center
 
     Return:
 
@@ -52,14 +53,14 @@ def gauss_smooth(data, n=11, sigma=1.67):
     assert n%2 == 1
     m = (n-1) // 2
     xs = np.arange(-m, m+1)
-    kernel = np.exp(-0.5/sigma**2 * xs**2)
+    kernel = np.exp(-0.5/sigma**2 * (xs-mu)**2)
     kernel /= kernel.sum()
 
     smooth = smoothen(data, kernel)
     return smooth
 
 
-def calc_Rjbf(cdf, Tgen=4, Tdelay=0, sm_preset=1, update_cdf=True, dt_dpl=0):
+def calc_Rjbf(cdf, Tgen=4, Tdelay=0, sm_preset='g11', update_cdf=True, dt_dpl=0):
     """Calculate R_jbf:
 
     Parameters:
@@ -68,7 +69,8 @@ def calc_Rjbf(cdf, Tgen=4, Tdelay=0, sm_preset=1, update_cdf=True, dt_dpl=0):
       DON, DPL, DOO.
     - Tgen: generation interval (integer days)
     - Tdelay: additional time shift (integer days)
-    - sm_preset: smoothing-parameter preset (int), see source code.
+    - sm_preset: smoothing-parameter preset (g11, g9, custom11, etc.).
+      See source code.
     - update_cdf: True to add columns 'Dsm' and 'Rt' to cdf.
     - dt_dpl: time offset (int days) of DPL data
 
@@ -82,18 +84,20 @@ def calc_Rjbf(cdf, Tgen=4, Tdelay=0, sm_preset=1, update_cdf=True, dt_dpl=0):
     # Apply smoothing to total cases (Dtot)
     # Smoothing parameters, various combinations (n, sigma)
     # Larger sigma = more agressive smoothing.
-    sm_presets = [
-        # Gaussian kernels
-        (13, 2.1),
-        (11, 2.1), # This works well
-        (9, 2.1),
-        (7, 2.8),
+    sm_presets = {
+        # Gaussian kernels n, sigma, mu
+        'g13': (13, 2.1, 0),
+        'g11': (11, 2.1, 0), # This works well
+        'g9': (9, 2.1, 0),
+        'g7': (7, 2.8, 0),
+        'g11offs': (11, 2.1, -0.3),
         # Custom kernelsf'Gaussian, n={sm_n}, σ={sm_sigma:.3g}'
-        np.array([0.00210191, 0.03323479, 0.02142772, 0.07180504, 0.14321991,
-                  0.18248858, 0.19054455, 0.17576429, 0.09342508, 0.05432827,
-                  0.02243447, 0.00861231, 0.00061307])
+        'custom11': np.array(
+            [0.00210191, 0.03323479, 0.02142772, 0.07180504, 0.14321991,
+             0.18248858, 0.19054455, 0.17576429, 0.09342508, 0.05432827,
+             0.02243447, 0.00861231, 0.00061307])
 
-        ]
+        }
     sm_preset = sm_presets[sm_preset]
     fdate = cdf.index[-1]
 
@@ -106,9 +110,9 @@ def calc_Rjbf(cdf, Tgen=4, Tdelay=0, sm_preset=1, update_cdf=True, dt_dpl=0):
     Dtot += dpl
 
     if isinstance(sm_preset, tuple):
-        sm_n, sm_sigma = sm_preset
-        Dsm = gauss_smooth(Dtot.values, sm_n, sm_sigma)
-        sm_desc = f'Gaussian, n={sm_n}, σ={sm_sigma:.3g}'
+        sm_n, sm_sigma, sm_mu = sm_preset
+        Dsm = gauss_smooth(Dtot.values, sm_n, sm_sigma, sm_mu)
+        sm_desc = f'Gaussian, n={sm_n}, σ={sm_sigma:.3g}, μ={sm_mu:.3g}'
     else:
         Dsm = smoothen(Dtot.values, sm_preset)
         sm_desc = f'Speciale kernel, n={len(sm_preset)}'
@@ -230,21 +234,32 @@ def infer_smoothing_kernel_rivm(ts_lo='2020-08-08', ts_hi='2021-06-15',
     ker /= ker.sum()
 
     if plot:
+        # comparison: gaussian kernel
+        a = np.zeros(11)
+        a[5] = 1.0
+        sigma, mu = 2.1, -0.3
+        ker_gauss = gauss_smooth(a, n=11, sigma=sigma, mu=mu)
+
         fig, ax = plt.subplots()
         ax.stem(np.arange(-m, m+1), ker, markerfmt='o', use_line_collection=True,
-                basefmt='')
-        ax.set_title('Inferred smoothing kernel')
+                basefmt='none', label='Inferred kernel')
+        markerline, stemlines, baseline  = ax.stem(
+            np.arange(-5, 6)+0.1, ker_gauss, markerfmt='^', linefmt='--',
+            use_line_collection=True,
+            basefmt='none', label='Gauss'
+            )
+        stemlines.set_color('gray')
+        markerline.set_color('gray')
+        ax.axhline(0, color='black')
+        ax.set_title(f'Inferred smoothing kernel and Gauss (n=11, σ={sigma}, μ={mu})')
+        ax.legend()
+        ax.grid()
         fig.show()
 
     return ker
 
 
-
-
-#%%
-
-
-def calc_plot_Rjbf(fdate=None, Tgen=4, Tdelay=0, sm_preset=1, dt_dpl=0):
+def calc_plot_Rjbf(fdate=None, Tgen=4, Tdelay=0, sm_preset='g11', dt_dpl=0):
     """Calculate R_jbf and plot.
 
     Parameters:
@@ -323,4 +338,5 @@ if __name__ == '__main__':
     plt.close('all')
     infer_smoothing_kernel_rivm()
     calc_plot_Rjbf('2021-06-15')
-    calc_plot_Rjbf('2021-06-15', sm_preset=4)
+    calc_plot_Rjbf('2021-06-15', sm_preset='custom11')
+    calc_plot_Rjbf('2021-06-15', sm_preset='g11offs')
