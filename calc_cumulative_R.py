@@ -83,7 +83,8 @@ if __name__ == '__main__':
     nlcs.init_data(autoupdate=True)
     #%%
 
-    Rt_mine = get_Rt_mine('2021-06-22', '2021-07-19', slide_delay=False)
+    Rt_mine_fixD = get_Rt_mine('2021-06-22', '2021-07-20', slide_delay=False)
+    Rt_mine_varD = get_Rt_mine('2021-06-22', '2021-07-20', slide_delay=True)
 
 
     Rt_rivm = get_Rt_rivm('2021-06-22', '2021-07-13')
@@ -99,13 +100,15 @@ if __name__ == '__main__':
     cases7 = cases7.loc[cases_mask]
 
     plt.close('all')
-    fig, (axR, axC) = plt.subplots(2, 1, tight_layout=True, sharex=True)
+    fig, (axR, axC) = plt.subplots(2, 1, tight_layout=True, sharex=True,
+                                   figsize=(6, 7))
     Tgen = 4.0 # generation interval
 
     cases_scale = 590
 
     for Rt, label, delay, marker in [
-            (Rt_mine, 'hk_nien', 4.5*day, 'o'),
+            (Rt_mine_fixD, 'hk_nien, fixD', 4.5*day, 'o'),
+            #(Rt_mine_varD, 'hk_nien, varD', 5.5*day, 'o'),
             (Rt_rivm, 'RIVM', 4*day, '^')
             ]:
         axR.plot(Rt, marker=marker, label=label)
@@ -116,7 +119,7 @@ if __name__ == '__main__':
             marker=marker, label=f'Volgens R[{label}]'
             )
 
-    axC.plot(cases, marker='*', label='Gerapporteerd')
+    axC.plot(cases.index, cases.values, marker='*', linestyle='', label='Gerapporteerd')
     axC.plot(cases7, marker='v', label='Gerapporteerd (7d gemid.)')
 
     axR.set_ylabel('Rt')
