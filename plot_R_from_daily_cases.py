@@ -33,6 +33,13 @@ if __name__ == '__main__':
     nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)
     nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
                  ylim=(0.5, 2.0))
+
+    #%% R by holiday rogion
+
+    nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
+             regions=['HR:Noord', 'HR:Midden', 'HR:Zuid'], ylim=(0.5, 2.0),
+             only_trendlines=True)
+
     #%% R graph of cities, provinces
     #nlcs.plot_Rt(ndays=200, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True)
     nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
