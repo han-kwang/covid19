@@ -46,7 +46,9 @@ Date,Date_stop,Description,Flags
 2021-07-01,,Piek R=4.0
 2021-07-10,,Stop dansen/nachthoreca
 2021-07-12,2021-08-22,Schoolvak. Noord
+# 2021-07-17,2021-08-29,Schoolvak. Midden
 2021-07-24,2021-09-05,Schoolvak. Zuid
+# 2021-07-16,2021-07-25,Kermis Tilburg
 
 # run calc_vaccinations.py
 2021-04-10,,5% gevaccineerd
@@ -59,5 +61,7 @@ Date,Date_stop,Description,Flags
 2021-07-09,,40% gevaccineerd
 2021-07-16,,45% gevaccineerd
 2021-07-25,,50% gevaccineerd
-2021-08-08,,55% gevaccineerd
+2021-08-03,,55% gevaccineerd
+2021-08-12,,60% gevaccineerd
+2021-08-21,,65% gevaccineerd
 # EOF

@@ -60,7 +60,7 @@ def load_testdata(min_date='2021-01-01'):
     return df
 
 
-df = load_testdata('2021-06-01')
+df = load_testdata('2021-06-15')
 df_saved = df.copy()
 #%%
 # Convert to index 'sdate' and columns 2, 3, 4, ... with n_tested

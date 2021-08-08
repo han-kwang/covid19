@@ -35,9 +35,9 @@ vac_recs = [
     ('2021-05-30', 9.4e6),
     ('2021-06-13', 12.4e6),
     ('2021-06-27', 15.3e6),
-    # Next estimate
-    ('2021-07-11', 18.3e6),
-    ('2021-07-25', 20.6e6),
+    ('2021-08-01', 20.9e6),
+    # estimate RIVM
+    ('2021-08-31', 24.3e6),
     ]
 
 
@@ -52,10 +52,10 @@ vac_recs_full = [
     ('2021-06-13', 4.48e6),
     ('2021-06-27', 5.91e6),
     ('2021-07-11', 7.10e6),
-    ('2021-07-18', 7.99e6),
-    ('2021-07-25', 8.66e6),
+    ('2021-07-18', 7.98e6),
+    ('2021-07-25', 8.64e6),
+    ('2021-08-01', 9.31e6),
     # extrapolated
-    ('2021-08-15', 10.0e6),
     ]
 
 vdf = pd.DataFrame.from_records(vac_recs, columns=['Date', 'ncum'])
@@ -64,6 +64,17 @@ fvdf = pd.DataFrame.from_records(vac_recs_full, columns=['Date', 'ncum'])
 for df in [vdf, fvdf]:
     df['Date'] = pd.to_datetime(df['Date'])
     df.set_index('Date', inplace=True)
+
+    # Extrapolate 3 weeks
+    dt = (df.index[-1] - df.index[-2]) / pd.Timedelta('1 d')
+    ncum_a, ncum_b = df.iloc[-2:]['ncum']
+    dt_x = 21 # 3 weeks
+    ncum_x = ncum_b + (ncum_b-ncum_a) / dt * dt_x
+    tm_x = df.index[-1] + pd.Timedelta(dt_x, 'd')
+    df_x = pd.DataFrame(dict(ncum=ncum_x), index=[tm_x])
+    df = df.append(df_x)
+    # print(df)
+
     # interpolate to 1-day resolution
     f_ncum = scipy.interpolate.interp1d(
         df.index.to_julian_date(), df['ncum'], bounds_error=False, fill_value='extrapolate')

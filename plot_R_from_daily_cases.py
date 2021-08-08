@@ -32,16 +32,16 @@ if __name__ == '__main__':
     print('--Corrected data--')
     nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)
     nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
-                 ylim=(0.5, 2.0))
+                 ylim=(0.5, 1.5))
 
     #%% R by holiday rogion
 
-    nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
-             regions=['HR:Noord', 'HR:Midden', 'HR:Zuid'], ylim=(0.5, 2.0),
-             only_trendlines=True)
+    nlcs.plot_Rt(ndays=30, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
+             regions=['HR:Noord', 'HR:Midden', 'HR:Zuid'], ylim=(0.6, 1.1),
+             only_trendlines=False)
 
     #%% R graph of cities, provinces
-    #nlcs.plot_Rt(ndays=200, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True)
+    #nlcs.plot_Rt(ndays=200, lastday=-1, delay=nlcs.DELAYhttps://nos.nl/liveblog/2386246_INF2REP, source='r7', correct_anomalies=True)
     nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
                  regions=city_list, only_trendlines=True)
     nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
@@ -75,24 +75,5 @@ if __name__ == '__main__':
 
 
     #%% anomalies
-
-    print('--Daily cases--')
-    df=nlcs.get_region_data('Nederland')[0].iloc[-50:]
-
-    fig, ax = plt.subplots(figsize=(10, 4), tight_layout=True);
-    width = pd.Timedelta('10 h')
-    ax.bar(df.index-width/2, df['Delta_orig']*17.4e6, width=width,  label='Ruwe data')
-    ax.bar(df.index+width/2, df['Delta']*17.4e6, width=width, label='Schatting na correctie')
-
-    mask = df.index.dayofweek == 3
-    ax.plot(df.index[mask]-width/2, df.loc[mask, 'Delta_orig']*17.4e6, 'gv', markersize=8, label='Donderdagen')
-    ax.legend()
-    ax.set_yscale('log')
-    ax.set_ylabel('Positieve gevallen per dag')
-    tools.set_xaxis_dateformat(ax)
-    ax.grid(which='minor', axis='y')
-    title = 'Positieve tests per dag'
-    ax.set_title(title)
-    fig.canvas.set_window_title(title)
-    fig.show()
-
+    nlcs.init_data()
+    nlcs.plot_anomalies(-70, None)

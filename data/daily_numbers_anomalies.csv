@@ -31,6 +31,12 @@ Date_report,fraction,days_back,reference
 2021-05-03,0.25,-1
 # Storing 17 mei.
 2021-05-18,0.23,-1
+# 19-06: 8600 of 5200 of todays tests (sampling date) were registered on 22-06.
+# I didn't notice this being reported in the media. NOS liveblogs:
+# 20 Jun https://nos.nl/liveblog/2385845, 21 Jun https://nos.nl/liveblog/2385959
+# 22 Jun https://nos.nl/liveblog/2386115, 23 Jun https://nos.nl/liveblog/2386246
+2021-06-22,0.1,-1
+2021-06-22,0.1,-2
 # 11 juli: "Door een achterstand in administratie valt het cijfer vandaag lager uit dan het werkelijk is."
 # https://coronadashboard.rijksoverheid.nl/landelijk/positief-geteste-mensen
 # Maar ook: Besmettingscijfer valt toch niet lager uit

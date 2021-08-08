@@ -278,6 +278,30 @@ def load_Rt_rivm(autoupdate=True, source='rivm'):
 
     raise ValueError(f'source={source!r}')
 
+
+def check_RIVM_message():
+    """Check for messages on data problems on the RIVM page. Print warning if so."""
+
+    url = 'https://data.rivm.nl/covid-19/'
+    with urllib.request.urlopen(url) as response:
+        data_bytes = response.read()
+        htm = data_bytes.decode('utf-8')
+
+    # Trim html response
+    htm = re.sub('<pre>.*$', '', htm, flags=re.S)  # pre starts the list of files.
+
+    # Search for <p>...</p> message.
+    def re_sub_callback(m):
+        inner = m.group(1)
+        if (
+            'worden om 15' not in inner
+            and not re.match('\s*$', inner, re.S)
+            ):
+            print(f'Warning: RIVM data page says:\n{inner}')
+        return ''
+    re.sub('<p[^>]*>(.*?)</p>', re_sub_callback, htm, flags=re.I+re.S)
+
+
 def update_cum_cases_csv(force=False):
     """Update 'cumulative data' csv file (if not recently updated)."""
 
@@ -306,6 +330,8 @@ def update_cum_cases_csv(force=False):
                 print('Cumulative case data file may or may not be the latest version.')
                 print('Use update_cum_cases_csv(force=True) to be sure.')
                 return
+
+    check_RIVM_message()
 
     url = 'https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_cumulatief.csv'
     print(f'Getting new daily case statistics file...')
@@ -1292,6 +1318,34 @@ def reset_plots():
         print(f'Warning: cannot set language: {e.args[0]}')
     plt.rcParams["date.autoformatter.day"] = "%d %b"
     plt.close('all')
+
+
+def plot_anomalies(istart=-70, istop=None):
+    """Plot daily case counts and corrections (from anomalies).
+
+    Parameters: iloc range; default .iloc[-70:].
+    """
+    df = get_region_data('Nederland')[0].iloc[istart:istop]
+
+    fig, ax = plt.subplots(figsize=(10, 4), tight_layout=True);
+    width = pd.Timedelta('10 h')
+    ax.bar(df.index-width/2, df['Delta_orig']*17.4e6, width=width,  label='Ruwe data')
+    ax.bar(df.index+width/2,
+           df['Delta']*17.4e6 * (df['Delta'] != df['Delta_orig']),
+           width=width, label='Schatting na correctie')
+
+    mask = df.index.dayofweek == 3
+    ax.plot(df.index[mask]-width/2, df.loc[mask, 'Delta_orig']*17.4e6, 'gv', markersize=8, label='Donderdagen')
+    ax.legend()
+    ax.set_yscale('log')
+    ax.set_ylabel('Positieve gevallen per dag')
+    tools.set_xaxis_dateformat(ax)
+    ax.grid(which='minor', axis='y')
+    title = 'Positieve tests per dag'
+    ax.set_title(title)
+    fig.canvas.set_window_title(title)
+    fig.show()
+
 
 
 
