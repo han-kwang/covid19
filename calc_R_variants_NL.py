@@ -177,7 +177,7 @@ ax.set_ylabel('R')
 ax.set_title('Reproductiegetal per variant (Nederland)\n'
              '(Aanname: generatie-interval 4 dagen)')
 ax.legend(loc='upper left')
-nlcs._add_restriction_labels(ax, rdf['date_R'][0], rdf['date_R'][-1], flagmatch='RGraph')
+nlcs._add_event_labels(ax, rdf['date_R'][0], rdf['date_R'][-1], flagmatch='RGraph')
 
 
 

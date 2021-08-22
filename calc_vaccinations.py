@@ -55,7 +55,11 @@ vac_recs_full = [
     ('2021-07-18', 7.98e6),
     ('2021-07-25', 8.64e6),
     ('2021-08-01', 9.31e6),
-    # extrapolated
+    ('2021-08-08', 10.0e6),
+    ('2021-08-15', 10.7e6),
+    # Estimated final level
+    ('2021-09-05', 12.5e6),
+    ('2021-10-01', 12.5e6),
     ]
 
 vdf = pd.DataFrame.from_records(vac_recs, columns=['Date', 'ncum'])

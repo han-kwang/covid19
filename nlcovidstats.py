@@ -59,7 +59,7 @@ DELAY_INF2REP = [
 # this will contain dataframes, initialized by init_data().
 # - mun: municipality demograhpics
 # - cases: cases by municipality
-# - restrictions: Dutch restrictions by date
+# - events: Dutch events by date
 # - Rt_rivm: RIVM Rt estimates
 # - anomalies: anomaly data
 DFS = {}
@@ -70,8 +70,8 @@ DFS = {}
 
 
 
-def load_restrictions():
-    """Return restrictions DataFrame.
+def load_events():
+    """Return events DataFrame.
 
     - index: DateTime start.
     - 'Date_stop': DateTime
@@ -80,7 +80,7 @@ def load_restrictions():
       particular type of grahp.
     """
 
-    df = pd.read_csv(DATA_PATH / 'restrictions.csv', comment='#')
+    df = pd.read_csv(DATA_PATH / 'events_nl.csv', comment='#')
     df['Date'] = pd.to_datetime(df['Date']) + pd.Timedelta('12:00:00')
     df['Date_stop'] = pd.to_datetime(df['Date_stop'])
     df.loc[df['Flags'].isna(), 'Flags'] = None
@@ -289,6 +289,9 @@ def check_RIVM_message():
 
     # Trim html response
     htm = re.sub('<pre>.*$', '', htm, flags=re.S)  # pre starts the list of files.
+
+    # Remove comment (warning message stored in comment)
+    htm = re.sub('<!--.*-->', '', htm, flags=re.S)
 
     # Search for <p>...</p> message.
     def re_sub_callback(m):
@@ -780,9 +783,9 @@ def _zero2nan(s):
     sc[s <= 0] = np.nan
     return sc
 
-def _add_restriction_labels(ax, tmin, tmax, with_ribbons=True, textbox=False, bottom=True,
+def _add_event_labels(ax, tmin, tmax, with_ribbons=True, textbox=False, bottom=True,
                             flagmatch='RGraph'):
-    """Add restriction labels and ribbons to axis (with date on x-axis).
+    """Add event labels and ribbons to axis (with date on x-axis).
 
     - ax: axis object
     - tmin, tmax: time range to assume for x axis.
@@ -796,11 +799,11 @@ def _add_restriction_labels(ax, tmin, tmax, with_ribbons=True, textbox=False, bo
     ribbon_yspan =  (ymax - ymin)*0.35
     ribbon_hgt = ribbon_yspan*0.1 # ribbon height
     ribbon_ystep = ribbon_yspan*0.2
-    df_restrictions = DFS['restrictions']
+    df_events = DFS['events']
     ribbon_colors = ['#ff0000', '#cc7700'] * 2
-    if df_restrictions is not None:
+    if df_events is not None:
         i_res = 0
-        for _, (res_t, res_t_end, res_d, flags) in df_restrictions.reset_index().iterrows():
+        for _, (res_t, res_t_end, res_d, flags) in df_events.reset_index().iterrows():
             if not (tmin <= res_t <= tmax):
                 continue
             if flags and not re.match(flagmatch, flags):
@@ -849,7 +852,7 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
     - subtitle: second title line (optional)
     """
 
-    df_restrictions = DFS['restrictions']
+    df_events = DFS['events']
     df_mun = DFS['mun']
 
     fig, ax = plt.subplots(figsize=(12, 6))
@@ -909,7 +912,7 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
 
         labels.append((df1[dnc_column][-1]*1e5, f' {reg_label} ({texp})'))
 
-    _add_restriction_labels(
+    _add_event_labels(
         ax, df1.index[0], df1.index[-1], with_ribbons=False,
         flagmatch='CaseGraph'
         )
@@ -1223,7 +1226,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
 
     xlim = (Rt.index[0] - pd.Timedelta('12 h'), Rt.index[-1] + pd.Timedelta('3 d'))
     ax.set_xlim(*xlim)
-    _add_restriction_labels(ax, Rt.index[0], Rt.index[-1], flagmatch='RGraph')
+    _add_event_labels(ax, Rt.index[0], Rt.index[-1], flagmatch='RGraph')
     if g_mobility:
         _add_mobility_data_to_R_plot(ax)
 
@@ -1286,7 +1289,7 @@ def plot_Rt_oscillation():
     fig.show()
 
 def init_data(autoupdate=True, Rt_source='rivm'):
-    """Init global dict DFS with 'mun', 'Rt_rivm', 'cases', 'restrictions'.
+    """Init global dict DFS with 'mun', 'Rt_rivm', 'cases', 'events'.
 
     Parameters:
 
@@ -1298,7 +1301,7 @@ def init_data(autoupdate=True, Rt_source='rivm'):
     DFS['cases'] = df = load_cumulative_cases(autoupdate=autoupdate)
     DFS['mun'] = nl_regions.get_municipality_data()
     DFS['Rt_rivm'] = load_Rt_rivm(autoupdate=autoupdate, source=Rt_source)
-    DFS['restrictions'] = load_restrictions()
+    DFS['events'] = load_events()
     dfa = pd.read_csv('data/daily_numbers_anomalies.csv', comment='#')
     dfa['Date_report'] = pd.to_datetime(dfa['Date_report']) + pd.Timedelta('10 h')
     DFS['anomalies'] = dfa.set_index('Date_report')
@@ -1320,28 +1323,32 @@ def reset_plots():
     plt.close('all')
 
 
-def plot_anomalies(istart=-70, istop=None):
+def plot_anomalies(istart=-70, istop=None, region='Nederland', figsize=(10, 4)):
     """Plot daily case counts and corrections (from anomalies).
 
     Parameters: iloc range; default .iloc[-70:].
     """
-    df = get_region_data('Nederland')[0].iloc[istart:istop]
+    df, population = get_region_data(region)
+    df = df.iloc[istart:istop]
 
-    fig, ax = plt.subplots(figsize=(10, 4), tight_layout=True);
+    fig, ax = plt.subplots(figsize=figsize, tight_layout=True);
     width = pd.Timedelta('10 h')
-    ax.bar(df.index-width/2, df['Delta_orig']*17.4e6, width=width,  label='Ruwe data')
-    ax.bar(df.index+width/2,
-           df['Delta']*17.4e6 * (df['Delta'] != df['Delta_orig']),
-           width=width, label='Schatting na correctie')
+    ax.bar(df.index-width/2, df['Delta_orig']*population, width=width,  label='Ruwe data')
+    mask = (df['Delta'] != df['Delta_orig'])
+    if mask.sum() > 0:
+        ax.bar(df.index[mask]+width/2,
+               df.loc[mask, 'Delta']*population,
+               width=width, label='Schatting na correctie')
 
     mask = df.index.dayofweek == 3
-    ax.plot(df.index[mask]-width/2, df.loc[mask, 'Delta_orig']*17.4e6, 'gv', markersize=8, label='Donderdagen')
+    ax.plot(df.index[mask]-width/2, df.loc[mask, 'Delta_orig']*population,
+            'g^', markersize=8, label='Donderdagen')
     ax.legend()
     ax.set_yscale('log')
     ax.set_ylabel('Positieve gevallen per dag')
     tools.set_xaxis_dateformat(ax)
     ax.grid(which='minor', axis='y')
-    title = 'Positieve tests per dag'
+    title = f'Positieve tests per dag ({region})'
     ax.set_title(title)
     fig.canvas.set_window_title(title)
     fig.show()

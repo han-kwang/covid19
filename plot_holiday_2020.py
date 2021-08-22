@@ -45,7 +45,7 @@ if __name__ == '__main__':
     ax.set_ylabel(r'$\Delta R_t$')
     ax.axhline(0, color='k', linestyle='--')
     ax.legend()
-    nlcs._add_restriction_labels(ax, Rt.index[0], Rt.index[-1])
+    nlcs._add_event_labels(ax, Rt.index[0], Rt.index[-1])
     tools.set_xaxis_dateformat(ax)
 
     fig.show()

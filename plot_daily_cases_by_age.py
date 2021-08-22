@@ -126,7 +126,7 @@ axs[1].set_title('Percentages posititieve tests naar leeftijd en rapportagedatum
 nlcs.add_labels(axs[1], flabels, xpos=xs[-1] + (xs[-1]-xs[0])*0.02, logscale=False,
                 mindist_scale=2.5)
 
-nlcs._add_restriction_labels(axs[0], xs[0], xs[-1], with_ribbons=False, textbox=True,
+nlcs._add_event_labels(axs[0], xs[0], xs[-1], with_ribbons=False, textbox=True,
                              bottom=False)
 
 for ax in axs:
