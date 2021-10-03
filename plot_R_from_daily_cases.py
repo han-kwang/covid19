@@ -12,7 +12,7 @@ import pandas as pd
 
 city_list = [
     'Nederland', 'Amsterdam', 'Rotterdam', "'s-Gravenhage", 'Utrecht',
-    'Eindhoven', 'Groningen', 'Tilburg', 'Enschede'
+    'Eindhoven', 'Groningen', 'Tilburg', 'Almere',
     ]
 province_list = [
     'Zuid-Holland', 'Noord-Holland', 'Noord-Brabant', 'Gelderland',
@@ -36,6 +36,8 @@ if __name__ == '__main__':
 
     #%%
 
+
+
     nlcs.plot_Rt(regions=['Nederland', 'Amsterdam'],
                  ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
                  ylim=(0.5, 1.5))
@@ -43,9 +45,19 @@ if __name__ == '__main__':
 
     #%% R by holiday rogion
 
-    nlcs.plot_Rt(ndays=30, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
-             regions=['HR:Noord', 'HR:Midden', 'HR:Zuid'], ylim=(0.6, 1.1),
+    import nlcovidstats as nlcs
+    nlcs.reset_plots()
+    nlcs.init_data(autoupdate=True)
+
+    nlcs.plot_Rt(ndays=55, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
+             regions=['HR:Noord', 'HR:Midden', 'HR:Zuid'], ylim=(0.6, 1.2),
              only_trendlines=False)
+
+    #%%
+    nlcs.plot_daily_trends(
+        45,  region_list=['HR:Noord', 'HR:Midden', 'HR:Zuid']
+    )
+
 
     #%% R graph of cities, provinces
     #nlcs.plot_Rt(ndays=200, lastday=-1, delay=nlcs.DELAYhttps://nos.nl/liveblog/2386246_INF2REP, source='r7', correct_anomalies=True)
@@ -82,6 +94,7 @@ if __name__ == '__main__':
 
 
     #%% anomalies
+    import nlcovidstats as nlcs
     nlcs.init_data()
     nlcs.plot_anomalies(-100, None)
     #nlcs.plot_anomalies(-180, -70)

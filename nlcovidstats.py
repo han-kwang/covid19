@@ -1069,11 +1069,13 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
               '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'] * 5
 
+    markers = 'o^v<>s+x123' * 5
+
     labels = [] # tuples (y, txt)
     if isinstance(regions, str):
         regions = regions.split(',')
 
-    for i_region, (region, color) in enumerate(zip(regions, colors)):
+    for i_region, (region, color, marker) in enumerate(zip(regions, colors, markers)):
 
         df1, _npop = get_region_data(region, lastday=lastday, correct_anomalies=correct_anomalies)
         source_col = dict(r7='Delta7r', sg='DeltaSG')[source]
@@ -1099,8 +1101,8 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
             label = re.sub('^[A-Z]+:', '', region)
 
         if not only_trendlines:
-            ax.plot(Rt[:-3], fmt, label=label, markersize=psize, color=color)
-            ax.plot(Rt[-3:], fmt, markersize=psize, color=color, alpha=0.35)
+            ax.plot(Rt[:-3], fmt, label=label, marker=marker, markersize=psize, color=color)
+            ax.plot(Rt[-3:], fmt, markersize=psize, color=color, marker=marker, alpha=0.35)
 
         # add confidence range (ballpark estimate)
         print(region)
@@ -1134,7 +1136,8 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
                 txt = (f'R={Rt_point_latest:.2f} (datapunt), '
                        f'R={Rt_smooth_latest:.2f} (voorlopige trendlijn)')
             print(f'Update reproductiegetal Nederland t/m {date_latest}: {txt}.'
-                  f' Trend: {"+" if slope>=0 else "−"}{abs(slope):.3f} per dag.')
+                  ' #COVID19NL\n'
+                  f'Trend: {"+" if slope>=0 else "−"}{abs(slope):.3f} per dag.')
 
 
         label = None
@@ -1331,17 +1334,18 @@ def plot_anomalies(istart=-70, istop=None, region='Nederland', figsize=(10, 4)):
     df, population = get_region_data(region)
     df = df.iloc[istart:istop]
 
-    fig, ax = plt.subplots(figsize=figsize, tight_layout=True);
-    width = pd.Timedelta('10 h')
-    ax.bar(df.index-width/2, df['Delta_orig']*population, width=width,  label='Ruwe data')
+    fig, ax = plt.subplots(figsize=figsize, tight_layout=True)
+    width = pd.Timedelta('18 h')
+    ax.bar(df.index, df['Delta_orig']*population, width=width,  label='Ruwe data')
     mask = (df['Delta'] != df['Delta_orig'])
     if mask.sum() > 0:
-        ax.bar(df.index[mask]+width/2,
+        ax.bar(df.index[mask],
                df.loc[mask, 'Delta']*population,
-               width=width, label='Schatting na correctie')
+               width=width, alpha=0.5,
+               label='Schatting na correctie')
 
     mask = df.index.dayofweek == 3
-    ax.plot(df.index[mask]-width/2, df.loc[mask, 'Delta_orig']*population,
+    ax.plot(df.index[mask], df.loc[mask, 'Delta_orig']*population,
             'g^', markersize=8, label='Donderdagen')
     ax.legend()
     ax.set_yscale('log')
