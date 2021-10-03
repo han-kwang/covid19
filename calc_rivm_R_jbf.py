@@ -145,12 +145,13 @@ def calc_Rjbf(cdf, Tgen=4, Tdelay=0, sm_preset='g11', update_cdf=True, dt_dpl=0)
 
     return Dsm, Rt_series, sm_desc
 
-def get_cdf(fdate=None):
+def get_cdf(fdate=None, strip_days=3, corr=True):
     """Return casus DataFrame for 1 day (yyyy-mm-dd, defaulrt most recent).
 
     Index as datetime at 12:00.
+    The last `strip_days` days of DOO/DPL/DON are stripped.
+    With corr=True, attempt to make a coarse correction for recent case counts.
     """
-
     if fdate:
         cdf = ca.load_merged_summary(fdate, fdate, reprocess=False)
     else:
@@ -160,11 +161,30 @@ def get_cdf(fdate=None):
 
     fdate = cdf.iloc[-1]['Date_file']
 
-
     # Dataframe with DON/DOO/DPL counts for most recent file date and all
     # Date_statistics since the July 2020, ignore last 3 daysTgen=4, Tdelay=0,Tgen=4, Tdelay=0,
     cdf = cdf.loc[cdf['Date_file'] == fdate]
-    cdf = cdf.loc[cdf['Date_statistics'] >= '2020-07-01'].iloc[:-3].copy()
+    cdf = cdf.loc[cdf['Date_statistics'] >= '2020-07-01'].copy()
+
+    # Correction factor: regenerate using get_cdf_corr_fac().
+    # These ones based on Aug/Sept 2021.
+    cfac = np.array(
+        [ 1.005,  1.007,  1.01 ,  1.014,  1.018,  1.024,  1.032,  1.043,
+         1.059,  1.085,  1.126,  1.19 ,  1.303,  1.517,  1.893,  2.258,
+         2.012, 11.681
+         ])
+
+    if corr:
+        m = len(cfac)
+        print('applying recent-value correction...')
+        cdf['Dtot_orig'] = cdf['Dtot']
+        for col in ['DPL', 'DON', 'DOO', 'Dtot']:
+            j = cdf.columns.get_loc(col)
+            cdf.iloc[-m:, j] = np.around(cdf.iloc[-m:, j] * cfac, 1)
+
+    if strip_days > 0:
+        cdf.iloc[:-strip_days]
+    cdf = cdf.copy()
     cdf.drop(columns='Date_file', inplace=True)
 
     cdf['Date_statistics'] += pd.Timedelta(12, 'h') # Set timestamps at noon
@@ -173,8 +193,37 @@ def get_cdf(fdate=None):
 
     return cdf
 
+
+def get_cdf_corr_fac(fd_a, fd_b, m=18):
+    """Get correction factor on DOx count for recent dates.
+
+    Parameters:
+
+    - fd_a: oldest file date, str 'yyyy-mm-dd'
+    - fd_b: most recent file date, str.
+    - m: consider data complete after this many dates.
+    """
+    fd_a, fd_b = [pd.to_datetime(fd) for fd in [fd_a, fd_b]]
+    delta_t = pd.Timedelta(m, 'd')
+    fd = fd_a
+    cfacs = []
+    while fd <= fd_b:
+        cdf_y = get_cdf(fd, strip_days=0, corr=False)
+        cdf_x = get_cdf(fd - delta_t, strip_days=0, corr=False)
+        cfac = (cdf_y.iloc[-m*2:-m] / cdf_x.iloc[-m:])['Dtot'].to_numpy()
+        cfacs.append(cfac)
+        fd += pd.Timedelta('1 d')
+    # Geometric mean
+    cfac = np.prod(cfacs, axis=0) ** (1/len(cfacs))
+    print(f'Correction factor:\ncfac={np.around(cfac, 3)!r}')
+    return cfac
+
+# Run this to regenerate
+# cfac = get_cdf_corr_fac('2021-08-19', '2021-09-19', m=18)
+
+
 def infer_smoothing_kernel_rivm(ts_lo='2020-08-08', ts_hi='2021-06-15',
-                                nk=13, plot=True):
+                                nk=13, plot=True, strip_days=3):
     """Find best smoothing kernel for RIVM data.
 
     Parameters:
@@ -259,7 +308,8 @@ def infer_smoothing_kernel_rivm(ts_lo='2020-08-08', ts_hi='2021-06-15',
     return ker
 
 
-def calc_plot_Rjbf(fdate=None, Tgen=4, Tdelay=0, sm_preset='g11', dt_dpl=0):
+def calc_plot_Rjbf(fdate=None, Tgen=4, Tdelay=0, sm_preset='g11', dt_dpl=0,
+                   strip_days=3, start_date='2020-08-01', title=''):
     """Calculate R_jbf and plot.
 
     Parameters:
@@ -269,12 +319,16 @@ def calc_plot_Rjbf(fdate=None, Tgen=4, Tdelay=0, sm_preset='g11', dt_dpl=0):
     - Tdelay: additional time shift (integer days)
     - sm_preset: smoothing-parameter preset (int), see source code of calc_Rjbf.
     - dt_dpl: time offset (int days) of DPL data
+    - strip_days: number of recent days to strip from case data
+      (because incomplete). Less than 3 is probably not meaningful.
+    - start_date: lowest date on x-axis.
+    - title: optional title of plot
 
     Return:
 
     - cdf: DataFrame with date index, columns a.o. Dtot, Dsm, Rt.
     """
-    cdf = get_cdf(fdate)
+    cdf = get_cdf(fdate, strip_days=strip_days)
     # This adds 'Dsm', 'Rt' columns to cdf.
     Tgen, Tdelay = 4, 0
     _, _, sm_desc = calc_Rjbf(
@@ -282,10 +336,15 @@ def calc_plot_Rjbf(fdate=None, Tgen=4, Tdelay=0, sm_preset='g11', dt_dpl=0):
         )
 
     # RIVM R series: index=Datum (12:00)
-    R_rivm = nlcs.load_Rt_rivm(False)['R']
+    df_rivm = nlcs.load_Rt_rivm(False).copy()
+    row_mask = df_rivm['R'].isna()  # recent rows with only min/max values
+    R_mid = np.sqrt(df_rivm.loc[row_mask, 'Rmin'] * df_rivm.loc[row_mask, 'Rmax'])
+    df_rivm.loc[row_mask, 'R'] = R_mid
+
+    cdf['R_rivm'] = R_rivm = df_rivm['R']
     R_jbf = pd.Series(cdf['Rt'].values, index=cdf.index)
 
-    row_select = (cdf.index >= '2020-08-01')
+    row_select = (cdf.index >= start_date)
 
     fig, (axC, axR1, axR2, axDR) = plt.subplots(
         4, 1, figsize=(7, 9),
@@ -293,7 +352,10 @@ def calc_plot_Rjbf(fdate=None, Tgen=4, Tdelay=0, sm_preset='g11', dt_dpl=0):
         )
 
     xdates = cdf.index[row_select]  # Dates on x axis
-    axC.set_title(f'Smoothing: {sm_desc}')
+    axC_title = f'Smoothing: {sm_desc}'
+    if title:
+        axC_title = f'{title}\n{axC_title}'
+    axC.set_title(axC_title)
     axC.semilogy(xdates, cdf.loc[row_select, 'Dtot'], label='Casus DOO+DPL+DON')
     axC.semilogy(xdates, cdf.loc[row_select, 'Dsm'], label='Casus Dxx, smooth')
     axC.legend()
@@ -302,7 +364,7 @@ def calc_plot_Rjbf(fdate=None, Tgen=4, Tdelay=0, sm_preset='g11', dt_dpl=0):
     # R graphs
     for axR in (axR1, axR2):
         axR.plot(R_jbf.loc[xdates], label='R (JBF)', color='r')
-        axR.plot(R_rivm.loc[xdates], label='R (RIVM)', color='b',
+        axR.plot(R_rivm.loc[xdates[xdates <= R_rivm.index[-1]]], label='R (RIVM)', color='b',
                  linestyle=(0, (5, 1)))
         axR.set_ylabel('$R_t$')
 
@@ -328,6 +390,7 @@ def calc_plot_Rjbf(fdate=None, Tgen=4, Tdelay=0, sm_preset='g11', dt_dpl=0):
     return cdf
 
 
+#%%
 if __name__ == '__main__':
 
     if 0:
@@ -340,3 +403,14 @@ if __name__ == '__main__':
     calc_plot_Rjbf('2021-06-15')
     calc_plot_Rjbf('2021-06-15', sm_preset='custom11')
     calc_plot_Rjbf('2021-06-15', sm_preset='g11offs')
+    #%%
+    plt.close('all')
+    cdf=calc_plot_Rjbf(
+        '2021-09-16', strip_days=3, start_date='2021-05-01',
+        title='O.b.v. data t/m 16 sep'
+        )
+    #%%
+    cdf=calc_plot_Rjbf(
+        '2021-09-19', strip_days=1, start_date='2021-05-01',
+        title='O.b.v. data t/m 19 sep'
+        )
