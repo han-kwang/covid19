@@ -10,8 +10,10 @@ nlcs.init_data()
 import numpy as np
 
 import pandas as pd
-df=  pd.read_csv('data/COVID-19_rioolwaterdata.csv', sep=';')
 
+# https://data.rivm.nl/covid-19/COVID-19_rioolwaterdata.csv
+df=  pd.read_csv('data/COVID-19_rioolwaterdata.csv', sep=';')
+print(f'Rioolwater latest date: {df["Date_measurement"].max()}')
 df_saved = df.copy()
 #%%
 
@@ -55,12 +57,12 @@ for i, rcode in enumerate(rcodes):
 
 #%% calculate R
 sum_df['rflow_per_capita'] = sum_df['rflow_abs'] / sum_df['pop']
-delay = 1 # days
+delay = 5 # days
 
 def get_gfac(s):
     """From series s"""
     # growth factor week-on-week
-    gfac = s.shift(3) / s.shift(-3)
+    gfac = s.shift(-3) / s.shift(3)
     return gfac.shift(-delay)
 
 sum_df['GF'] = get_gfac(sum_df['rflow_per_capita'])
