@@ -62,6 +62,7 @@ vac_recs_full = [
     ('2021-09-05', 11.30e6),
     ('2021-09-12', 11.38e6),
     ('2021-09-19', 11.42e6),
+    ('2021-10-03', 11.61e6),
     ]
 
 vdf = pd.DataFrame.from_records(vac_recs, columns=['Date', 'ncum'])

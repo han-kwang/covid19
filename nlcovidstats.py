@@ -800,7 +800,7 @@ def _add_event_labels(ax, tmin, tmax, with_ribbons=True, textbox=False, bottom=T
     ribbon_hgt = ribbon_yspan*0.1 # ribbon height
     ribbon_ystep = ribbon_yspan*0.2
     df_events = DFS['events']
-    ribbon_colors = ['#ff0000', '#cc7700'] * 2
+    ribbon_colors = ['#ff0000', '#cc7700'] * 10
     if df_events is not None:
         i_res = 0
         for _, (res_t, res_t_end, res_d, flags) in df_events.reset_index().iterrows():

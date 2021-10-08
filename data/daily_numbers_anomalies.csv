@@ -46,4 +46,7 @@ Date_report,fraction,days_back,reference
 # 8 Aug: https://nos.nl/artikel/2393179-2347-nieuwe-besmettingen-mogelijk-onderrapportage-door-storing
 # PLACEHOLDER
 # 2021-08-08,0.1,-1
+# 2021-10-06: "Due to a technical malfunction in the data flow the reports and
+# the test street data did not fully reach the RIVM."
+2021-10-07,0.15,-1
 # EOF

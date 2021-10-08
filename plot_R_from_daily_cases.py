@@ -31,8 +31,20 @@ if __name__ == '__main__':
     nlcs.init_data(autoupdate=True)
     print('--Corrected data--')
     nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)
-    nlcs.plot_Rt(ndays=120, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
+    nlcs.plot_Rt(ndays=120,
+                 regions=['Nederland', 'Bijbelgordel'],
+                 lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
                  ylim=(0.5, 1.5))
+
+    nlcs.plot_anomalies(-100, None)
+
+    #%% Bible belt
+    nlcs.plot_Rt(ndays=120, regions=['Niet-Bijbelgordel', 'Bijbelgordel'],
+                 lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
+                 ylim=(0.5, 1.5))
+
+
+
 
     #%%
 

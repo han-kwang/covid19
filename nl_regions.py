@@ -71,16 +71,20 @@ def get_municipality_data():
     """Return dataframe with municipality data:
 
     Index: Municipality (name)
-    Columns: Population, Province, HolRegion,
+    Columns: Population, Province, HolRegion, bible
 
     This just loads the csv file created by build_municipality_csv(),
     or use a previously cached version.
     """
 
     global DF_MUN
-    if DF_MUN is None:
+    if DF_MUN is None or 1:
         df = pd.read_csv(DATA_PATH / 'municipalities.csv')
         df.set_index('Municipality', inplace=True)
+        df_bible = pd.read_csv(DATA_PATH / 'mun_biblebelt_urk.csv',
+                               comment='#', sep=';')
+        df['bible'] = False
+        df.loc[df_bible['Gemeentenaam'].values, 'bible'] = True
         DF_MUN = df
 
     return DF_MUN.copy()
@@ -192,8 +196,10 @@ def select_cases_region(dfc, region):
         holiday regions.
       - 'POP:xx-yy': municipalities with population xx <= pop/1000 < yy'
       - 'P:xx': province
+      - 'Bijbelgordel', 'Niet-Bijbelgordel': ...
       - 'JSON:{...}' json dict containing key 'muns' with a list
         of municipalities, to be aggregrated.
+
 
     Return:
 
@@ -211,6 +217,10 @@ def select_cases_region(dfc, region):
     # First, mselect is Dataframe of selected municipalities.
     if region == 'Nederland':
         mselect = df_mun
+    elif region == 'Bijbelgordel':
+        mselect = df_mun.loc[df_mun['bible']]
+    elif region == 'Niet-Bijbelgordel':
+        mselect = df_mun.loc[~df_mun['bible']]
     elif region == 'HR:Midden+Zuid':
         mselect = df_mun.loc[df_mun['HolRegion'].str.match('Midden|Zuid')]
     elif region == 'HR:Midden+Noord':

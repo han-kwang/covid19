@@ -20,6 +20,16 @@ df_saved = df.copy()
 df = df_saved.copy()
 df_regions = pd.read_csv('data/rioolwater_gebieden.csv', comment='#')
 
+bad_regions = ['WOERDEN']# [:0]
+
+if bad_regions:
+    bad_regions_mask = df_regions['RWZI_AWZI_name'].isin(bad_regions)
+    assert len(bad_regions) == bad_regions_mask.sum()
+    df_regions = df_regions.loc[~bad_regions_mask]
+    print(f'Removed data for {", ".join(bad_regions)}.')
+else:
+    print('No bad regions selected.')
+
 # df will now include columns: Date_measurement, RNA_flow_per_100000, Inwonertal
 df = df.join(
     df_regions[['RWZI_AWZI_code', 'Inwonertal']].set_index('RWZI_AWZI_code'),
@@ -72,7 +82,7 @@ sum_df['GF_smooth'] = get_gfac(
 
 import matplotlib.pyplot as plt
 import tools
-plt.close('all')
+# plt.close('all')
 colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
           '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 fig, (axf, axR) = plt.subplots(2, 1, sharex=True, tight_layout=True, figsize=(10, 6))

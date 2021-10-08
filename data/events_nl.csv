@@ -53,6 +53,7 @@ Date,Date_stop,Description,Flags
 2021-08-30,,Scholen open Midden
 2021-09-06,,Scholen open Zuid
 2021-09-04,,Formule 1 en Dam-demo
+2021-09-14,,"Persco einde 1,5 m"
 2021-09-25,,"Einde 1,5 meter"
 2021-09-18,2021-09-25,Effect TvT,RGraph
 #,Rgraph
@@ -69,11 +70,8 @@ Date,Date_stop,Description,Flags
 2021-07-16,,45% gevaccineerd
 2021-07-25,,50% gevaccineerd
 2021-08-03,,55% gevaccineerd
-2021-08-03,,55% gevaccineerd
-2021-08-03,,55% gevaccineerd
 2021-08-12,,60% gevaccineerd
 2021-09-05,,65% gevaccineerd
-
 
 
 # EOF
