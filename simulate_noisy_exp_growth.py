@@ -22,11 +22,10 @@ from scipy.optimize import curve_fit
 # How often are samples taken (in days). Exact value doesn't matter much.
 dt_sample = 2
 
-k = 0.0336*dt_sample
-
+k = 0.0336
 # the model is: n(t) = a0 * exp(k * t)
-ts = np.arange(105/dt_sample)  # 105 days = 15 weeks
-txs = np.arange(150/dt_sample)  # extended time series for extrapolation
+ts = np.arange(0, 105, dt_sample)  # 105 days = 15 weeks
+txs = np.arange(0, 150, dt_sample)  # extended time series for extrapolation
 ns = np.exp(k*ts)  # number of cases found at each time point.
 Ntot = 400  # Total number of cases to be found.
 a0 = Ntot/ns.sum()
@@ -34,6 +33,8 @@ ns *= a0
 sigmas = np.sqrt(ns)
 
 # Fitting exponentials is tricky, so take the log and do linear regression.
+# We'll fit on ideal data (no noise) an rely on the curve fitting to
+# propagate the sample errors into a covariance matrix.
 lgns = np.log(ns)
 elgns = sigmas/ns
 def linfunc(x, a0, a1):
@@ -52,7 +53,7 @@ ek = np.sqrt(cov[1, 1])
 print(f'Fit k={fk:.3g} ± {ek:.3g}  (model: {k:.3g})')
 
 
-#%% generate curvves for this covariance matrix (monte-carlo)
+## generate curvves for this covariance matrix (monte-carlo)
 
 # We want the 95% CI, so doing 20 Monte-Carlo runs should cover roughly
 # the 95% CI.
@@ -61,6 +62,8 @@ n_mc = 20
 np.random.seed(2)
 la0mcs, kmcs = np.random.multivariate_normal([fla0, fk], cov, size=n_mc).T
 curves = np.exp(la0mcs + kmcs*txs.reshape(-1, 1))  # shape (num_t, num_mc)
+
+
 
 # sample realizations
 # Apply the error to log(n), not n, so that we don't end up with negative
@@ -76,6 +79,8 @@ ax.plot(txs, curves[:, 0], color='gray', zorder=-10, alpha=0.2, linewidth=2,
 # other curves without label
 ax.plot(txs, curves[:, 1:], color='gray', zorder=-10, alpha=0.2, linewidth=2)
 ax.set_ylim(-1, 100)
+
+
 ax.set_xlabel('Day number')
 ax.set_ylabel('Number of cases')
 ax.legend()
