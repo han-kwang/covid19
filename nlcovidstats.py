@@ -20,11 +20,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
-try:
-    from mplcursors import cursor as mpl_cursor
-except ModuleNotFoundError:
-    print('Note: consider \'pip install mplcursors\'.')
-    mpl_cursor = lambda _: None
 import nl_regions
 import scipy.signal
 import scipy.interpolate
@@ -1032,6 +1027,32 @@ def _add_mobility_data_to_R_plot(ax):
         ax.plot(ts, y0+scale*hs, color=clr, label=c)
 
 
+
+def _coord_format_Rplot(axR, axD, Tgen):
+    """Setup cursor coordinate formatting for R graph, from ax and twinx ax.
+
+    axR: R/date axis; axD: doubling time/date axis
+    Tgen: generation time"""
+    def format_coord(x, y):
+        #display_coord = axR.transData.transform((x,y))
+
+        #inv =
+        # convert back to data coords with respect to ax
+        # ax_coord = inv.transform(display_coord)  # x2, y2
+
+        # In this case, (x1, x2) == (x2, y2), but the y2 labels
+        # are custom made. Otherwise:
+        # x2, y2 = axD.transData.inverted().transform(axR.transData.transform((x,y)))
+
+        t, R = x, y
+        from matplotlib.dates import num2date
+        tm_str = num2date(t).strftime('%Y-%m-%d %H:%M')
+        T2 = np.log(2)/np.log(R) * Tgen
+        return f'{tm_str}: R={R:.3f}, T2={T2:.3g} d'
+    axD.format_coord = format_coord
+
+
+
 def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
             Tc=4.0, correct_anomalies=True, g_mobility=False, mode='show',
             ylim=None, only_trendlines=False):
@@ -1153,7 +1174,6 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
                               )
         ax.plot(Rt_smooth[-6:], color=color, alpha=1, zorder=0,
                 linestyle='--', dashes=(2,2))
-        mpl_cursor(smooth_line)
 
         labels.append((Rt[-1], f' {label}'))
 
@@ -1173,9 +1193,6 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
         # print(Rt_rivm_est)
         ax.fill_between(Rt_rivm_est.index, Rt_rivm_est['Rmin'], Rt_rivm_est['Rmax'],
                         color='k', alpha=0.15, label='RIVM prognose')
-        mpl_cursor(None)
-
-
 
     iex = dict(r7=3, sg=7)[source] # days of extrapolation
 
@@ -1210,6 +1227,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
     # get second y axis with doubling times.
     # Adjust values shown depending on scale range.
     ax2 = ax.twinx()
+    _coord_format_Rplot(ax, ax2, Tgen=Tc)
     T2s = np.array([
         -60, -21, -14, -10, -7, -4, -3,
         9999,
@@ -1242,6 +1260,8 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
     if mode == 'show':
         fig.canvas.set_window_title(f'Rt ({", ".join(regions)[:30]}, ndays={ndays})')
         fig.show()
+
+
 
     elif mode == 'return_fig':
         return fig
