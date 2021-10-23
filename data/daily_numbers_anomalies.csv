@@ -49,4 +49,6 @@ Date_report,fraction,days_back,reference
 # 2021-10-06: "Due to a technical malfunction in the data flow the reports and
 # the test street data did not fully reach the RIVM."
 2021-10-07,0.15,-1
+# Counting anomaly (move these to very far back to see impact) - only as a test
+# 2021-10-11,0.17,-199
 # EOF

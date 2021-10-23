@@ -63,6 +63,7 @@ vac_recs_full = [
     ('2021-09-12', 11.38e6),
     ('2021-09-19', 11.42e6),
     ('2021-10-03', 11.61e6),
+    ('2021-10-17', 11.73e6),
     ]
 
 vdf = pd.DataFrame.from_records(vac_recs, columns=['Date', 'ncum'])
@@ -142,13 +143,16 @@ print(vdf)
 #%% label texts for full vaccination
 
 t0 = fvdf.index[0]
-f_f1st = scipy.interpolate.interp1d(
-    fvdf['ncum'].values/17.4e6, np.arange(len(fvdf)), kind='linear',
+pop_nl = 17.4e6 # population
+f_ffull = scipy.interpolate.interp1d(
+    fvdf['ncum'].values/pop_nl, np.arange(len(fvdf)), kind='linear',
     bounds_error=True
     )
-for f in np.arange(0.05, 1, 0.05):
+
+
+for f in np.concatenate([np.arange(0.05, 0.651, 0.05), np.arange(0.66, 0.75, 0.01)]):
     try:
-        t = t0 + f_f1st(f) * pd.Timedelta(1, 'd')
+        t = t0 + f_ffull(f) * pd.Timedelta(1, 'd')
         print(f'{t.strftime("%Y-%m-%d")},,{f*100:g}% gevaccineerd')
     except ValueError:
         break
