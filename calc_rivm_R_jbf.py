@@ -406,11 +406,11 @@ if __name__ == '__main__':
     #%%
     plt.close('all')
     cdf=calc_plot_Rjbf(
-        '2021-09-16', strip_days=3, start_date='2021-05-01',
+        '2021-10-12', strip_days=3, start_date='2021-05-01',
         title='O.b.v. data t/m 16 sep'
         )
     #%%
     cdf=calc_plot_Rjbf(
-        '2021-09-19', strip_days=1, start_date='2021-05-01',
+        '2021-09-20', strip_days=1, start_date='2021-05-01',
         title='O.b.v. data t/m 19 sep'
         )

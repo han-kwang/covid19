@@ -30,9 +30,9 @@ if __name__ == '__main__':
         source_col = 'Delta7r'
 
         # skip the first 10 days because of zeros
-        Rt, delay_str = nlcs.estimate_Rt_series(df1[source_col].iloc[10:],
-                                                delay=nlcs.DELAY_INF2REP)
-        Rt = Rt.iloc[-ndays:]
+        R_df = nlcs.estimate_Rt_df(df1[source_col].iloc[10:],
+                                   delay=nlcs.DELAY_INF2REP)
+        Rt = R_df['Rt'].iloc[-ndays:]
 
         Rts.append(Rt)
 

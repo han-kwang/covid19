@@ -17,7 +17,7 @@ import nlcovidstats as nlcs
 if __name__ == '__main__':
     nlcs.init_data()
     plt.close('all')
-    get_dow_correction((-100, -1), True)
+    nlcs.get_dow_correction((-100, -1), True)
 
 
 
