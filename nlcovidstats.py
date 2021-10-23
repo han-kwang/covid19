@@ -152,6 +152,8 @@ def get_region_data(region, lastday=-1, printrows=0, correct_anomalies=True,
     - df: dataframe with added columns:
 
         - Delta: daily increase in case count (per capita).
+        - Delta_dowc: daily increase, day-of-week correction applied
+          based on national pattern in most recent 7 weeks.
         - Delta7r: daily increase as 7-day rolling average
           (last 3 days are estimated).
         - DeltaSG: daily increase, smoothed with (15, 2) Savitsky-Golay filter.Region selec
@@ -191,8 +193,9 @@ def get_region_data(region, lastday=-1, printrows=0, correct_anomalies=True,
     # get an estimated trend and use exponential growth or decay
     # for filling the data.
     if correct_dow == 'r7':
-        dow_correction = get_dow_correction((lastday-49, lastday))
         # mean number at t=-1.5 days
+        dow_correction = get_dow_correction((lastday-49, lastday))  # (7,) array
+        df1['Delta_dowc'] = df1['Delta'] * dow_correction[df1.index.dayofweek]
         nc1 = np.mean(nc.iloc[-4:] * dow_correction[nc.index[-4:].dayofweek])
     else:
         nc1 = nc.iloc[-4:].mean() # mean number at t=-1.5 days
@@ -652,10 +655,8 @@ def plot_cumulative_trends(ndays=100, regions=None,
     fig.show()
 
 
-
 def plot_anomalies_deltas(ndays=120):
     """Show effect of anomaly correction."""
-
     df, _npop = get_region_data('Nederland', correct_anomalies=True)
     fig, ax = plt.subplots(tight_layout=True, figsize=(8, 5))
 
@@ -668,6 +669,7 @@ def plot_anomalies_deltas(ndays=120):
     ax.set_title(title)
     fig.canvas.set_window_title(title)
     fig.show()
+
 
 def _add_mobility_data_to_R_plot(ax):
 
@@ -992,42 +994,78 @@ def reset_plots():
     plt.close('all')
 
 
-def plot_anomalies(istart=-70, istop=None, region='Nederland', figsize=(10, 4)):
+def plot_barchart_daily_counts(istart=-70, istop=None, region='Nederland', figsize=(10, 4)):
     """Plot daily case counts and corrections (from anomalies).
 
     Parameters: iloc range; default .iloc[-70:].
     """
     df_full, population = get_region_data(region)
-    df = df_full.iloc[istart:istop]
 
+    # set index time values to noon, not 10:00
+    df_full.index = df_full.index + (12 - df_full.index.hour) * pd.Timedelta('1 h')
+    df = df_full.iloc[istart:istop]
     fig, ax = plt.subplots(figsize=figsize, tight_layout=True)
     width = pd.Timedelta('24 h')
-    mask_workday = df.index.dayofweek.isin(np.arange(5))
     mask_weekend = df.index.dayofweek.isin((5, 6))
-    edgecolor = '#444444'
+
+    plot_labels = []
+    def addplot(func, *args, **kwargs):
+        """Add plot, store label in plot_labels."""
+        func(*args, **kwargs)
+        if 'label' in kwargs:
+            plot_labels.append(kwargs['label'])
+
+    edgecolor = '#888888'
     edge_width = min(100 / len(df), 1.5)
-    ax.bar(df.index, df['Delta_orig']*population,
-           width=width, label='Ruwe data', edgecolor=edgecolor, lw=edge_width)
+    addplot(
+        ax.bar, df.index, df['Delta_orig']*population,
+        width=width, label='Positief per dag', color='#77aaff',
+        edgecolor=edgecolor, lw=edge_width
+        )
     ax.bar(df.index[mask_weekend], df.loc[mask_weekend, 'Delta_orig']*population,
-           width=width, color='black', alpha=0.3)
+           width=width, color='black', alpha=0.25)
     mask = (df['Delta'] != df['Delta_orig'])
     if mask.sum() > 0:
-        ax.bar(df.index[mask],
-               df.loc[mask, 'Delta']*population,
-               width=width, alpha=0.5,
-               label='Schatting na correctie')
+        addplot(
+            ax.bar, df.index[mask], df.loc[mask, 'Delta']*population,
+            width=width, alpha=0.5, color='#ff7f0e',
+            label='Schatting i.v.m. datastoring'
+            )
+    addplot(
+        ax.plot, df.index, df['Delta_dowc']*population, 'x',
+        color='#aa0000',
+        markersize=4*min(5, max(1, 100/len(df))),
+        zorder=10,
+        label='Weekdageffect gecorrigeerd'
+        )
 
     idx_3d = df_full.index[-4]
-    ax.plot(df.loc[df.index <= idx_3d, 'Delta7r']*population,
-            label='7d-gemiddelde', color='red', lw=2)
-    ax.plot(df.loc[df.index >= idx_3d, 'Delta7r']*population,
-            label='7d schatting',
-            linestyle=(2, (2, 1)), color='#ff8888', lw=2)
+    addplot(
+        ax.plot, df.loc[df.index <= idx_3d, 'Delta7r']*population,
+        label='7d-gemiddelde', color='red', lw=2
+        )
+    # generate white/black dashed line for better contrast
+    ax.plot(
+        df.loc[df.index >= idx_3d, 'Delta7r']*population,
+        color='white', lw=2
+        )
+    addplot(
+        ax.plot, df.loc[df.index >= idx_3d, 'Delta7r']*population,
+        label='7d schatting',
+        linestyle=(2, (2, 1)), color='#000000', lw=2
+        )
 
     #mask = df.index.dayofweek == 3
     #ax.plot(df.index[mask], df.loc[mask, 'Delta_orig']*population,
     #        'g^', markersize=8, label='Donderdagen')
-    ax.legend(loc='lower left')
+
+    # ensure legend in same order as plots.
+    handles, labels = ax.get_legend_handles_labels()
+    leg = ax.legend(
+        [handles[labels.index(lab)] for lab in plot_labels], plot_labels,
+        loc='best', framealpha=1
+        )
+    leg.set_zorder(20)
     ax.set_yscale('log')
     ax.set_ylabel('Positieve gevallen per dag')
     tools.set_xaxis_dateformat(ax)

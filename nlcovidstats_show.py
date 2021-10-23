@@ -62,7 +62,7 @@ if __name__ == '__main__':
                      regions='HR:Noord,HR:Midden+Zuid,POP:80-900,POP:0-80')
 
     if 'anomalies' in show_plots:
-        nlcs.plot_anomalies_deltas(ndays=120)
+        nlcs.plot_barchart_daily_counts(ndays=120)
 
 
     # pause (for command-line use)

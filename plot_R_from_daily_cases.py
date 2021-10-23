@@ -25,18 +25,18 @@ province_list = ['Nederland'] + [f'P:{x}' for x in province_list]
 #%% R graph for daily Twitter update
 if __name__ == '__main__':
 
-    nlcs.download_Rt_rivm(force=True)
-    nlcs.check_RIVM_message()
     nlcs.reset_plots()
     nlcs.init_data(autoupdate=True)
     print('--Corrected data--')
     nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)
     nlcs.plot_Rt(ndays=120,
-                 regions=['Nederland', 'Bijbelgordel'],
+                 regions=['Nederland'], # , 'Bijbelgordel'],
                  lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
                  ylim=(0.5, 1.5))
 
-    nlcs.plot_anomalies(-100, None)
+
+    nlcs.plot_barchart_daily_counts(-100, None)
+
 
     #%% Bible belt
     nlcs.plot_Rt(ndays=120, regions=['Niet-Bijbelgordel', 'Bijbelgordel'],
@@ -55,7 +55,7 @@ if __name__ == '__main__':
                  ylim=(0.5, 1.5))
 
 
-    #%% R by holiday rogion
+    #%% R by holiday region
 
     import nlcovidstats as nlcs
     nlcs.reset_plots()
@@ -68,6 +68,9 @@ if __name__ == '__main__':
     #%%
     nlcs.plot_daily_trends(
         45,  region_list=['HR:Noord', 'HR:Midden', 'HR:Zuid']
+    )
+    nlcs.plot_daily_trends(
+        380,  region_list=['Nederland', 'Bijbelgordel']
     )
 
 
@@ -108,5 +111,5 @@ if __name__ == '__main__':
     #%% anomalies
     import nlcovidstats as nlcs
     nlcs.init_data()
-    nlcs.plot_anomalies(-100, None)
-    #nlcs.plot_anomalies(-180, -70)
+    nlcs.plot_barchart_daily_counts(-100, None)
+    #nlcs.plot_barchart_daily_counts(-180, -70)
