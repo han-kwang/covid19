@@ -1351,12 +1351,19 @@ def plot_anomalies(istart=-70, istop=None, region='Nederland', figsize=(10, 4)):
 
     Parameters: iloc range; default .iloc[-70:].
     """
-    df, population = get_region_data(region)
-    df = df.iloc[istart:istop]
+    df_full, population = get_region_data(region)
+    df = df_full.iloc[istart:istop]
 
     fig, ax = plt.subplots(figsize=figsize, tight_layout=True)
-    width = pd.Timedelta('18 h')
-    ax.bar(df.index, df['Delta_orig']*population, width=width,  label='Ruwe data')
+    width = pd.Timedelta('24 h')
+    mask_workday = df.index.dayofweek.isin(np.arange(5))
+    mask_weekend = df.index.dayofweek.isin((5, 6))
+    edgecolor = '#444444'
+    edge_width = min(100 / len(df), 1.5)
+    ax.bar(df.index, df['Delta_orig']*population,
+           width=width, label='Ruwe data', edgecolor=edgecolor, lw=edge_width)
+    ax.bar(df.index[mask_weekend], df.loc[mask_weekend, 'Delta_orig']*population,
+           width=width, color='black', alpha=0.3)
     mask = (df['Delta'] != df['Delta_orig'])
     if mask.sum() > 0:
         ax.bar(df.index[mask],
@@ -1364,14 +1371,25 @@ def plot_anomalies(istart=-70, istop=None, region='Nederland', figsize=(10, 4)):
                width=width, alpha=0.5,
                label='Schatting na correctie')
 
-    mask = df.index.dayofweek == 3
-    ax.plot(df.index[mask], df.loc[mask, 'Delta_orig']*population,
-            'g^', markersize=8, label='Donderdagen')
-    ax.legend()
+    idx_3d = df_full.index[-4]
+    ax.plot(df.loc[df.index <= idx_3d, 'Delta7r']*population,
+            label='7d-gemiddelde', color='red', lw=2)
+    ax.plot(df.loc[df.index >= idx_3d, 'Delta7r']*population,
+            label='7d schatting',
+            linestyle=(2, (2, 1)), color='#ff8888', lw=2)
+
+    #mask = df.index.dayofweek == 3
+    #ax.plot(df.index[mask], df.loc[mask, 'Delta_orig']*population,
+    #        'g^', markersize=8, label='Donderdagen')
+    ax.legend(loc='lower left')
     ax.set_yscale('log')
     ax.set_ylabel('Positieve gevallen per dag')
     tools.set_xaxis_dateformat(ax)
     ax.grid(which='minor', axis='y')
+    from matplotlib.ticker import LogFormatter
+    ax.yaxis.set_minor_formatter(
+        LogFormatter(minor_thresholds=(2, 1))
+        )
     title = f'Positieve tests per dag ({region})'
     ax.set_title(title)
     fig.canvas.set_window_title(title)
