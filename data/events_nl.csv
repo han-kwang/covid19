@@ -56,8 +56,8 @@ Date,Date_stop,Description,Flags
 2021-09-14,,"Persco einde 1,5 m"
 2021-09-25,,"Einde 1,5 meter"
 2021-09-18,2021-09-25,Effect TvT,RGraph
-2021-11-16,2021-11-23,Vak. Mid./Noord
-2021-11-23,2021-11-30,Vak. Zuid
+2021-10-16,2021-10-23,Vak. Mid./Noord
+2021-10-23,2021-10-30,Vak. Zuid
 2021-12-25,2022-01-09,Kerstvakantie
 
 # run calc_vaccinations.py
