@@ -57,6 +57,41 @@ DELAY_INF2REP = [
 
 _DOW_CORR_CACHE = {} # keys: dayrange tuples.
 
+def get_dow_correction_rolling(nweeks=7, taper=0.5):
+    """Return DoW correction factors for all dates.
+
+    Parameters:
+
+    - nweeks: number of preceding weeks to use for each date.
+    - taper: which fraction of old data to taper to lower weight.
+
+    Return:
+
+    - Series with same timestamp index as cases data.
+    """
+    df, _ = get_region_data('Nederland', lastday=-1, correct_dow=None)
+    # df = df.iloc[3:-3].copy() # strip edge points without well defined 7d mean.
+    # Correction factor - 1
+    df['Delta_factor'] = df['Delta']/df['Delta7r']
+    ntaper = int(nweeks*taper + 0.5)
+    kernel = np.zeros(nweeks*2 + 1)
+    kernel[-nweeks:] = 1
+    kernel[-nweeks:-nweeks+ntaper] = np.linspace(1/ntaper, 1-1/ntaper, ntaper)
+    kernel /= kernel.sum()
+    df['Dow_factor'] = np.nan
+    for idow in range(7):
+        row_select = df.index[df.index.dayofweek == idow]
+        facs = df.loc[row_select, 'Delta_factor']
+        n = len(facs)
+        assert len(facs) > nweeks
+        mean_factors = np.convolve(facs, kernel, mode='same')
+        mean_factors[mean_factors == 0] = np.nan
+        df.loc[row_select, 'Dow_factor'] = 1/mean_factors
+    df.loc[df.index[:8], 'Dow_factor'] = np.nan
+    return df['Dow_factor']
+
+
+
 def get_dow_correction(dayrange=(-50, -1), verbose=False):
     """Return array with day-of-week correction factors.
 
