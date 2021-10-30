@@ -783,7 +783,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
     Rt_rivm = DFS['Rt_rivm']
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    fig.subplots_adjust(top=0.90, bottom=0.11, left=0.09, right=0.92)
+    fig.subplots_adjust(top=0.90, bottom=0.12, left=0.09, right=0.92)
     plt.xticks(rotation=-20)
 
     if ylim:

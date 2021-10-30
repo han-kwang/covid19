@@ -160,11 +160,14 @@ def load_casus_data(date):
 
     Parameter:
 
-    - date: 'yyyy-mm-dd' string
+    - date: 'yyyy-mm-dd' string or timestamp
 
     Load from data-casus/COVID-19_casus_landelijk_xxx.csv.gz
     Date_file and Date_statistics will be timestamps (at time 0:00)
     """
+    if not isinstance(date, str):
+        date = date.strftime('%Y-%m-%d')
+
     fpath = _find_casus_fpath(date)
 
     df = pd.read_csv(fpath, sep=',')

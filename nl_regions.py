@@ -267,6 +267,55 @@ def select_cases_region(dfc, region):
 
     return dfc_sel, npop
 
+def get_holiday_regions_by_ggd():
+    """Return dict; key: holiday regions; value: list of GGD regions.
+
+    GGD regions are verbose, as used in casus dataset.
+    Note that some regions have been renamed on 2020-12-12, 2021-06-18; therefore
+    duplicates with spelling differences.
+    """
+    regions_hol2ggd = {
+
+        'Noord': [
+         'GGD Amsterdam',
+         'GGD Hollands-Noorden', 'GGD Hollands Noorden',
+         'GGD Drenthe',
+         'GGD Groningen',
+         'GGD Twente', 'GGD Regio Twente',
+         'GGD IJsselland',
+         'GGD Zaanstreek/Waterland', 'GGD Zaanstreek-Waterland',
+         'GGD Gooi en Vechtstreek',
+         'GGD Fryslân',
+         'GGD Flevoland',
+         'GGD Kennemerland',
+         ],
+
+        'Midden': [
+         'Veiligheids- en Gezondheidsregio Gelderland-Midden',
+         'GGD Hollands-Midden', 'GGD Hollands Midden',
+         'GGD Gelderland-Zuid',  # Includes a bit of 'Zuid'
+         'GGD Rotterdam-Rijnmond', 'GGD Rotterdam Rijnmond', # includes low-population part of 'Zuid'
+         'GGD Haaglanden',
+         'GGD Regio Utrecht', 'GGD regio Utrecht',
+         'Dienst Gezondheid & Jeugd ZHZ',
+         'GGD Noord- en Oost-Gelderland', 'GGD Noord en Oost Gelderland',
+         'GGD Gelderland-Midden', # old
+         ],
+
+        'Zuid': [
+         'GGD Zuid-Limburg', 'GGD Zuid Limburg',
+         'GGD West-Brabant', 'GGD West Brabant',
+         'GGD Brabant-Zuidoost', 'GGD Brabant Zuid-Oost', 'GGD Brabant Zuid-Oost ',
+         'GGD Limburg-Noord', 'GGD Limburg Noord',
+         'GGD Hart voor Brabant',
+         'GGD Brabant Zuid-Oost', # old
+         'GGD Zeeland'
+         ]
+    }
+    for k in regions_hol2ggd.keys():
+        regions_hol2ggd[k] = sorted(regions_hol2ggd[k])
+
+    return regions_hol2ggd
 
 
 if __name__ == '__main__':
