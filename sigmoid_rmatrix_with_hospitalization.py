@@ -75,9 +75,12 @@ def run_sim(R0, pop, inf, sus, subpop_names=None,
         return sep.join(ss)
 
     for i in range(50):
-        # incoming infectious contacts per group, (n,) vector.
+        # max 50 to prevent this from going on forever in case of badly
+        # chosen parameters.
+        # con: incoming infectious contacts per group, (n,) vector.
         con = R0 @ inf
-        # probability of at least one infectious incoming contact.
+        # probability of at least one infectious incoming contact, per
+        # susceptible individual; (n,) array.
         prob = 1 - np.exp(-con/pop)
         # next generation infections
         inf = sus * prob
@@ -86,10 +89,10 @@ def run_sim(R0, pop, inf, sus, subpop_names=None,
         infs.append(inf)
         # print(f'Inf: {_strarr(inf)}   Sus: {_strarr(sus)}')
         if np.sum(inf) < np.sum(infs[0]):
+            # End if there are fewer infections than what we started with.
             break
 
     ngen = len(suss)  # number of generations
-
     suss = np.array(suss)
     infs = np.array(infs)
 
@@ -101,7 +104,8 @@ def run_sim(R0, pop, inf, sus, subpop_names=None,
         # add to occupancy [i, :]; handle rejects.
         occup[i, :] = occup[i-1, :] + delta
 
-    if ihr is not None:
+    with_hosp = (ihr is not None)
+    if with_hosp:
         ihr, iir = np.array(ihr).T  # both arrays of length (n)
         for i in range(1, ngen):
             j = i - hosp_delay
@@ -113,28 +117,33 @@ def run_sim(R0, pop, inf, sus, subpop_names=None,
                 nhoss[i, :] -= infs[j, :]*ihr
                 nics[i, :] -= infs[j, :]*iir
 
-    R0_tot = np.around(np.linalg.eigvals(R0).max(), 2)  # system R0 value
+    # System R0 value (largest eigenvalue) is the R0 that you'd see
+    # after a while if there is no immunity buildup.
+    R0_sys = np.around(np.linalg.eigvals(R0).max(), 2)
     R0_grp = R0.sum(axis=0)  # outgoing R0 per group
     R0_grp_str = _strarr(R0_grp, '{:g}', ', ')
-    daynums = np.arange(ngen) * Tgen
 
+    #### Generate plots. ####
+    # Setup plots
     fig, axs = plt.subplots(
-        2 + (ihr is not None), 1,
-        figsize=(7, 5 + 2*(ihr is not None)),
+        (3 if with_hosp else 2), 1,
+        figsize=((7, 7) if with_hosp else (7, 5)),
         tight_layout=True, sharex=True
         )
-    if ihr is None:
-        (axrec, axinf) = axs
-        axhos = None
-    else:
+    if with_hosp:
         (axrec, axinf, axhos) = axs
         axhos.set_title('Bezetting ziekenhuis en IC')
+    else:
+        (axrec, axinf) = axs
+        axhos = None
 
+    # Plot the data
+    daynums = np.arange(ngen) * Tgen
     axs[-1].set_xlabel('Dagnummer')
     axrec.set_title(
-        f'Systeem $R_0$={R0_tot:.2f}, per deelpopulatie {R0_grp_str}\n\n'
+        f'Systeem $R_0$={R0_sys:.2f}, per deelpopulatie {R0_grp_str}\n\n'
         '% groepsimmuniteit per deelpopulatie')
-    axinf.set_title('Nieuwe ziektegevallen per deelpopulatie')
+    axinf.set_title(f'Nieuwe ziektegevallen per deelpopulatie, per {Tgen} dagen')
 
     frac_recs = 1 - (suss + infs)/pop  # (ngen, n) array for m generations
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
@@ -144,7 +153,7 @@ def run_sim(R0, pop, inf, sus, subpop_names=None,
                    color=color)
         axinf.semilogy(daynums, infs[:, igrp], f'{marker}-', label=name,
                        color=color)
-    if axhos:
+    if with_hosp:
         axhos.semilogy(
             daynums, nhoss[:, igrp], 's--',
             label=f'Verpleegafdeling', color='k', markersize=3
@@ -156,6 +165,7 @@ def run_sim(R0, pop, inf, sus, subpop_names=None,
         axhos.axhline(hicap[0], linestyle='--', color='red')
         axhos.axhline(hicap[1], linestyle='-', color='red')
 
+    # Print and add other metadata. Ticks and legends.
     fmt = '3.1f' if R0.min() >= 0.1 else '5.3f'
     R0_str = textmatrix('R0', R0, fmt=fmt)
     print(R0_str)
@@ -179,36 +189,35 @@ def run_sim(R0, pop, inf, sus, subpop_names=None,
 
 if __name__ == '__main__':
 
-    # "Let it rip among the invulnerable."
-    R0_rip = [
-        [2.3, 0.1],
-        [0.2, 0.5]
-        ]
-
-    # Moderate measures to "protect the vulnerable"
-    R0_moderate = [
-        [1.3, 0.1],
-        [0.2, 0.5]
-        ]
-
-    # Unrealistic measures.
-    R0_moderate = [
-        [1.3, 0.01],
-        [0.01, 0.5]
-        ]
+    R0_cases = {
+        'Let it rip among the invulnerable': [
+            [2.3, 0.1],
+            [0.2, 0.5]
+            ],
+        'Protect the vulnerable': [
+            [1.3, 0.1],
+            [0.2, 0.5]
+            ],
+        'Unrealistic protection of the vulnerable': [
+            [1.3, 0.01],
+            [0.01, 0.5]
+            ],
+        }
 
     pop = [12e6, 5e6]
     inf = [700, 300]
     sus = np.array(pop) - inf
     plt.close('all')
 
-    for R0_i in [R0_rip, R0_moderate]:
+    for name, R0 in R0_cases.items():
+        print(name)
         run_sim(
             R0_i, pop, inf, sus,
             subpop_names=['Niet-kwetsbaren', 'Kwetsbaren'],
             ihr=[[0, 0], [0.046, 0.024]]
             )
 
+    print('Single R0 for all')
     run_sim(
         [[2.5]], [17e6], [1e3], [17e6],
         subpop_names=['Hele bevolking'],
