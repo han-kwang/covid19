@@ -124,15 +124,22 @@ def download_Rt_rivm(force=False):
     if fpath.is_file():
         df = pd.read_csv(fpath)
         last_time = pd.to_datetime(df['Date'].iloc[-1])
-        # The file was released on 1st Tuesday after the last available data.
-        # Note that this will be an hour off in case of DST change.
-        last_release_time = last_time + ((1 - last_time.dayofweek) % 7) * pd.Timedelta('1 day')
-        last_release_time += pd.Timedelta('15:15:00')
+        # File release date 5 days after last datapoint.
+        last_release_time = last_time + pd.Timedelta('1 days, 15:15:00')
+        # release day of week -> time to next release
+        release_dows = {1: 3, 4: 4}
+        try:
+            days_to_next = release_dows[last_release_time.dayofweek]
+        except KeyError:
+            print(f'Warning: please check {__file__}: download_Rt_Rivm().\n'
+                  'Release schedule seems to have changed.')
+            days_to_next = 1
+        next_release_time = last_release_time + pd.Timedelta(days_to_next, 'd')
         now_time = pd.Timestamp.now()  # this will be in local time
-        if not force and now_time < last_release_time + pd.Timedelta(7, 'd'):
+        if not force and now_time < next_release_time:
             print('Not updating RIVM Rt data; seems recent enough')
-            print(f'  Inferred last_release: {_str_datetime(last_release_time)}; '
-                  f'now: {_str_datetime(now_time)}.')
+            print(f'  Inferred last release: {_str_datetime(last_release_time)}; '
+                  f'now: {_str_datetime(now_time)}; next release: {_str_datetime(next_release_time)}.')
             return
         local_file_data = fpath.read_bytes()
     else:
@@ -256,19 +263,16 @@ def check_RIVM_message():
     # Trim html response
     htm = re.sub('<pre>.*$', '', htm, flags=re.S)  # pre starts the list of files.
 
-    # Remove comment (warning message stored in comment)
-    htm = re.sub('<!--.*-->', '', htm, flags=re.S)
+    # Remove comment (warning message stored in comment), other non-text stuff
+    for pat in ['<!--.*?-->', '</?(strong|em|b|i)>', '.*15 hours.']:
+        htm = re.sub(pat, '', htm, flags=re.S)
 
-    # Search for <p>...</p> message.
-    def re_sub_callback(m):
-        inner = m.group(1)
-        if (
-            'worden om 15' not in inner
-            and not re.match('\s*$', inner, re.S)
-            ):
-            print(f'Warning: RIVM data page says:\n{inner}')
-        return ''
-    re.sub('<p[^>]*>(.*?)</p>', re_sub_callback, htm, flags=re.I+re.S)
+    if re.search('storing|onderraportage|achterstand', htm):
+        m = re.search('^\s*(.*?)<', htm, flags=re.S)
+        if m:
+            print(f'Warning: RIVM data page says:\n{m.group(1)}')
+        else:
+            print(f'Warning: apparent warning on: {url}.')
 
 
 
