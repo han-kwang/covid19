@@ -34,6 +34,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import nlcovidstats as nlcs
 import tools
+import ggd_data
+from tvt_Rvalue import get_R_from_TvT
 
 # Clone of the github.com/mzelst/covid-19 repo.
 test_path = '../mzelst-covid19-nobackup/data-rivm/tests'
@@ -45,7 +47,7 @@ def load_ggd_pos_tests(lastday=-1, pattern_weeks=2, Tgen=4.0):
     Parameters:
 
     - lastday: data up to which date to use (-1 = most recent, -2=second most
-      recent).
+      recent) or 'yyyy-mm-dd' string for specific date.
     - pattern_weeks: how many previous weeks to estimate weekday patterns.
     - Tgen: generation interval (days)
 
@@ -62,21 +64,7 @@ def load_ggd_pos_tests(lastday=-1, pattern_weeks=2, Tgen=4.0):
 
     Days with known bad data will have NaN.
     """
-    fnames = sorted(Path(test_path).glob('rivm_daily_*.csv.gz'))
-    fname = fnames[lastday] # latest
-    df = pd.read_csv(fname).drop(columns='Version')
-    print(f'Loaded {fname}')
-    df.rename(columns={'Date_of_statistics': 'Date_tested',
-                       'Tested_with_result': 'n_tested',
-                       'Tested_positive': 'n_pos'},
-              inplace=True)
-    df['Date_tested'] = pd.to_datetime(df['Date_tested'])
-    df.drop(columns='Date_of_report', inplace=True)
-    df = df.groupby('Date_tested').sum()
-
-    bad_dates = ['2021-02-07']
-    df.loc[pd.to_datetime(bad_dates), ['n_pos', 'n_tested']] = np.nan
-
+    df = ggd_data.load_ggd_pos_tests(lastday)
     # Handle 7-day effects to estimate last 3 days.
     df['n_pos_7'] = df['n_pos'].rolling(7, center=True).mean()
     nrows = len(df)
@@ -129,17 +117,66 @@ def add_dataset(ax, Rs, delay_days, label, marker, color, err_fan=(7, 0.15)):
         ax.fill_between(Rs.index[-n:] - delay, Rsmooth1-fan, Rsmooth1+fan,
                         color=color, alpha=0.2)
 
-if __name__ == '__main__':
-    nlcs.init_data()
-    dfR_rivm = nlcs.DFS['Rt_rivm'].copy()
+def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=False,
+                                yscale=('log', 300, 25000)):
+    """Plot RIVM daily cases and GGD positive tests together in one graph.
 
-    plt.close('all')
+    yscale: ('log', ymin, ymax) or ('linear', ymin, ymax)
+    """
+
+    df_ggd = load_ggd_pos_tests(-1)
+    df_mun, population = nlcs.get_region_data(
+        'Nederland', -1,
+        correct_anomalies=correct_anomalies
+        )
+    corr = ' schatting datastoring' if correct_anomalies else ''
+
+    fig, ax = plt.subplots(figsize=(10, 4), tight_layout=True)
+    ax.set_title('Positieve tests per dag')
+    # df_mun timestamps daily at 10:00
+    ax.step(df_mun.index + pd.Timedelta('14 h'), df_mun['Delta']*population,
+            where='pre',
+            label=f'RIVM meldingen (gemeentes){corr}'
+            )
+    # df_ggd timestamps daily at 12:00
+    ax.step(df_ggd.index + pd.Timedelta('2.5 d'), df_ggd['n_pos'],
+            where='pre', alpha=0.7, color='red',
+            label='GGD pos. tests (datum monstername + 2)'
+            )
+    ax.set_yscale(yscale[0])
+    ax.set_ylim(*yscale[1:])
+    dfa = nlcs.DFS['anomalies'].copy()  # index: date 10:00, columns ..., days_back
+    dfa = dfa.loc[dfa['days_back'] < 0]  # discard non-shift disturbances
+    dfa['Date_anomaly'] = dfa.index + pd.to_timedelta(2/24 + dfa['days_back'].values, 'd')
+
+    mun_idxs = pd.DatetimeIndex([
+        df_mun.index[df_mun.index.get_loc(tm, method='nearest')]
+        for tm in dfa['Date_anomaly'].values
+        ])
+    ax.scatter(
+        mun_idxs + pd.Timedelta('2 h'),
+        df_mun.loc[mun_idxs, 'Delta']*population,
+        label='Datastoringen', marker='o', s=20,
+        )
+    for tm in mun_idxs + pd.Timedelta('2 h'):
+        ax.axvline(tm, color='#4466aa', linestyle='--', alpha=0.3)
+
+    ax.legend()
+    ax.set_xlim(df_ggd.index[-num_days], df_ggd.index[-1] + pd.Timedelta(4, 'd'))
+    tools.set_xaxis_dateformat(ax)
+    ax.grid(axis='y', which='minor')
+    if yscale[0] == 'log':
+        tools.set_yaxis_log_minor_labels(ax)
+
+    fig.show()
+
+
+def plot_R_graph_multiple_methods(num_days=100):
+    """Plot national R graph with annotations and multiple calculation methods."""
+    dfR_rivm = nlcs.DFS['Rt_rivm'].copy()
 
 
     #fig, ax = plt.subplots(figsize=(12, 4), tight_layout=True)
-
-    delay_Rwow = pd.Timedelta(6.0, 'd')
-    delay_Rd7r = pd.Timedelta(4, 'd')
 
     num_days = 100
     lastday = -1  # -1 for most recent
@@ -153,5 +190,20 @@ if __name__ == '__main__':
     add_dataset(ax, df['R_wow'], 6.5, 'GGD week-op-week', 'x', '#008800', err_fan=None)
     add_dataset(ax, df['R_d7r'], 3.0, 'GGD afgeleide', '+', 'red', err_fan=None)
 
+    df_tvt = get_R_from_TvT()
+    ax.plot(df_tvt['R_interp'], color='purple', linestyle='--')
+    ax.errorbar(df_tvt.index, df_tvt['R'], df_tvt['R_err'],
+                color='purple', alpha=0.5)
+    ax.scatter(df_tvt.index, df_tvt['R'],
+                label='TvT %positief', color='purple', alpha=0.5)
+
+
     ax.legend()
 
+
+if __name__ == '__main__':
+
+    plt.close('all')
+    nlcs.init_data(autoupdate=True)
+    #plot_rivm_and_ggd_positives()
+    plot_R_graph_multiple_methods()

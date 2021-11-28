@@ -11,7 +11,8 @@ import re
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
-from tools import set_xaxis_dateformat
+from tools import set_xaxis_dateformat, set_yaxis_log_minor_labels
+import ggd_data
 
 
 # Clone of the github.com/mzelst/covid-19 repo.
@@ -25,7 +26,12 @@ def load_testdata(min_date='2021-01-01', max_date='2099-01-01'):
     Use cache if available.
     Pull data from mzelst-covid19 repository (which should be up to date).
 
-    Return DataFrame with multi-index (sdate, fdate).
+    Return DataFrame with:
+
+    - index: multi-index (sdate, fdate).
+    - n_tested: number of tests (sum over regions)
+    - n_pos: number postiive
+
     """
     if (min_date, max_date) in _CACHE:
         tm, df = _CACHE[(min_date, max_date)]
@@ -33,40 +39,32 @@ def load_testdata(min_date='2021-01-01', max_date='2099-01-01'):
             print('Loaded from cache.')
             return df.copy()
 
-    fnames = sorted(Path(test_path).glob('rivm_daily_*.csv.gz'))
+    # Lead dataframes for all requested dates.
+    min_date, max_date = [pd.to_datetime(x) for x in [min_date, max_date]]
+    fdate = min_date
     dfs = []
-    for fn in fnames:
-        m = re.search(r'_(\d\d\d\d-\d\d-\d\d).csv.gz', str(fn))
-        if not m:
-            continue
-        fdate = m.group(1)
-        if fdate < min_date or fdate > max_date:
-            continue
-        df = pd.read_csv(fn).drop(columns='Version')
-        fdate = df.iloc[0]['Date_of_report']
-        df = df.groupby('Date_of_statistics').sum()
+    while fdate <= max_date:
+        fdate_str = fdate.strftime('%Y-%m-%d')
+        try:
+            df = ggd_data.load_ggd_pos_tests(fdate_str, quiet=True)
+        except FileNotFoundError:
+            break
         df.reset_index(inplace=True)
-        df['Date_of_report'] = fdate
+        df.rename(columns={'Date_tested': 'sdate'}, inplace=True)
+        df['fdate'] = fdate
         dfs.append(df)
+        fdate += pd.Timedelta('1 d')
+
+    if len(dfs) == 0:
+        raise ValueError(f'No data loaded for range {min_date} .. {max_date}.')
+    print(f'Loaded {len(dfs)} GGD test files, last one '
+          f'{dfs[-1].iloc[0]["fdate"].strftime("%Y-%m-%d")}')
+
 
     df = pd.concat(dfs)
-
-    colmap = {
-        'Date_of_report': 'fdate',
-        'Date_of_statistics': 'sdate',
-        'Security_region_code': 'srcode',
-        'Tested_with_result': 'n_tested',
-        'Tested_positive': 'n_pos'
-        }
-
-    # df.drop(columns=['Security_region_name', 'Version'], inplace=True)
-    df.rename(columns=colmap, inplace=True)
-    df['fdate'] = pd.to_datetime(df['fdate'].str.slice(0, 10))
-    df['sdate'] = pd.to_datetime(df['sdate'])
     df = df[['sdate', 'fdate', 'n_tested', 'n_pos']]
     df = df.sort_values(['sdate', 'fdate'])
-
-    df = df.loc[df['sdate'] >= pd.to_datetime(min_date)-pd.Timedelta(2, 'd')]
+    df = df.loc[df['sdate'] >= min_date - pd.Timedelta(2, 'd')]
 
     _CACHE[(min_date, max_date)] = (time(), df.copy())
     return df
@@ -95,8 +93,7 @@ def plot_jump_10Aug():
     ax.set_xlim(df['sdate'].min()-oneday, df['sdate'].max()+oneday)
     ax.grid()
     ax.set_title('Aantal GGD tests per dag op twee publicatiedatums.')
-    import tools
-    tools.set_xaxis_dateformat(ax, xlabel='Datum monstername')
+    set_xaxis_dateformat(ax, xlabel='Datum monstername')
     ax.legend()
     fig.show()
 
@@ -182,7 +179,9 @@ def plot_daily_tests_and_delays(date_min, date_max='2099-01-01', src_col='n_test
         )
     if src_col == 'n_pos':
         ax.set_yscale('log')
-        ax.set_ylim(1000, 20000)
+        ax.set_ylim(1000, 30000)
+        ax.grid(axis='y', which='minor')
+        set_yaxis_log_minor_labels(ax)
         ax.set_title('Aantal positieve GGD-tests per dag')
         ax.set_xlabel('Datum monstername')
     else:
