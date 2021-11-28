@@ -60,11 +60,20 @@ Date,Date_stop,Description,Flags
 2021-10-23,2021-10-30,Vak. Zuid
 2021-10-30,2021-11-06,Effect meer TvT,RGraph
 2021-11-06,,"Maatregelen, o.a. maskerplicht"
+2021-11-11,,"Carnaval N-Brabant"
+2021-11-13,,"Maatregelen, o.a. horeca 20:00"
+
+2021-11-03,2021-12-31,"Max testcapaciteit 11 nov",RGraph
+
+
 2021-12-25,2022-01-09,Kerstvakantie
 2022-02-20,2022-02-27,Schoolvak. Noord
 2022-02-27,2022-03-06,Schoolvak. Mid/Zuid
 # Note: Meivakantie may start earlier in many schools.
 2022-04-30,2022-05-07,Schoolvak.
+
+
+
 # run calc_vaccinations.py
 2021-04-10,,5% gevaccineerd
 2021-05-11,,10% gevaccineerd
