@@ -9,7 +9,7 @@ import os
 import matplotlib.pyplot as plt
 import matplotlib
 import pandas as pd
-
+import numpy as np
 
 def pause_commandline(msg='Press Enter to continue.'):
     """Prompt user to continue (when outside Spyder).
@@ -20,8 +20,6 @@ def pause_commandline(msg='Press Enter to continue.'):
 
     if 'SPYDER_ARGS' not in os.environ:
         input(msg)
-
-
 
 
 def set_xaxis_dateformat(ax, xlabel=None, maxticks=10, yminor=False, ticklabels=True):
@@ -87,6 +85,46 @@ def _test_set_xaxis_dateformat():
         ax.plot(tseries)
         set_xaxis_dateformat(ax, maxticks=5)
         fig.show()
+
+
+def set_dense_minor_yticks(ax):
+    """If axis y range is less than 2 decades: override y ticks to include 1.5."""
+    ymin, ymax = ax.get_ylim()
+    if ymax/ymin > 100:
+        return
+    emin = np.floor(np.log10(ymin/4))
+    emax = np.ceil(np.log10(ymax*4))
+    mticks = np.array([1.5, 2, 3, 4, 5, 6, 7, 8, 9])
+    mticks = mticks * (10**np.arange(emin, emax).reshape(-1, 1))
+    mticks = mticks[(mticks > ymin/4) & (mticks < ymax*4)]
+    ax.yaxis.set_ticks(mticks, minor=True)
+    ax.set_ylim(ymin, ymax)
+
+
+def set_yaxis_log_minor_labels(ax):
+    """Set minor tick labels on log scale, including 1.5.
+
+    Tick 6 and 8 will have no label.
+
+    Call this after adding all the data and optionally setting y-range.
+    """
+    import matplotlib.ticker as mt
+
+    class MyLogFormatter(mt.LogFormatter):
+        """Use SI prefixes for large values."""
+        def __call__(self, x, pos=None):
+            mantisse = np.around(x* 10 ** -np.floor(np.log10(x)), 1)
+            if mantisse in (6, 8, 9):
+                return ''
+            for mul, prefix in [(1e6, 'M'), (1e3, 'k'), (1, ''), (1e-3, 'm')]:
+                if x >= mul:
+                    break
+            return f'{x/mul:.3g}{prefix}'
+
+    formatter = MyLogFormatter(minor_thresholds=(2, 1))
+    ax.yaxis.set_minor_formatter(formatter)
+    ax.yaxis.set_major_formatter(formatter)
+    set_dense_minor_yticks(ax)
 
 
 if __name__ == '__main__':

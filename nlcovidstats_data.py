@@ -118,7 +118,7 @@ def download_Rt_rivm(force=False):
     """
 
     # get last date available locally
-    fname_tpl = 'data/rivm_reproductiegetal{}.csv'
+    fname_tpl = 'data-rivm/R_number/rivm_reproductiegetal{}.csv'
     fpath = Path(fname_tpl.format(''))
 
     if fpath.is_file():
@@ -233,7 +233,7 @@ def load_Rt_rivm(autoupdate=True, source='rivm'):
         if autoupdate:
             download_Rt_rivm()
 
-        df = pd.read_csv('data/rivm_reproductiegetal.csv')
+        df = pd.read_csv('data-rivm/R_number/rivm_reproductiegetal.csv')
 
         df2 = pd.DataFrame(
             {'Datum': pd.to_datetime(df['Date']) + pd.Timedelta(12, 'h')}
@@ -258,22 +258,29 @@ def check_RIVM_message():
     url = 'https://data.rivm.nl/covid-19/'
     with urllib.request.urlopen(url) as response:
         data_bytes = response.read()
-        htm = data_bytes.decode('utf-8')
+        # Page charset according to server is ISO-8859-1, but it
+        # contained character \x92 (windows-1252 apostroph) on 2021-11-16.
+        htm = data_bytes.decode('windows-1252')
 
     # Trim html response
     htm = re.sub('<pre>.*$', '', htm, flags=re.S)  # pre starts the list of files.
-
+    # HTML formatting of this block changes every time, but it's after the
+    # "daily 15:15" message.
     # Remove comment (warning message stored in comment), other non-text stuff
-    for pat in ['<!--.*?-->', '</?(strong|em|b|i)>', '.*15 hours.']:
-        htm = re.sub(pat, '', htm, flags=re.S)
+    delete_regexps = [
+        '<!--.*?-->',
+        '<[^>]+>',
+        '.*15 hours.'
+       ]
 
+    for regex in delete_regexps:
+        htm = re.sub(regex, '', htm, flags=re.S)
+    htm = re.sub(r'(\s)\s*', r'\1', htm)
+
+    if len(htm) > 500:
+        htm = f'{htm[:497]}...'
     if re.search('storing|onderraportage|achterstand', htm):
-        m = re.search('^\s*(.*?)<', htm, flags=re.S)
-        if m:
-            print(f'Warning: RIVM data page says:\n{m.group(1)}')
-        else:
-            print(f'Warning: apparent warning on: {url}.')
-
+        print(f'Warning: RIVM data page says:\n{htm}')
 
 
 def get_municipalities_by_pop(minpop, maxpop, sort='size'):
@@ -325,7 +332,7 @@ def update_cum_cases_csv(force=False):
                 print('Use update_cum_cases_csv(force=True) to be sure.')
                 return
 
-    check_RIVM_message()
+    #check_RIVM_message()
 
     url = 'https://data.rivm.nl/covid-19/COVID-19_aantallen_gemeente_cumulatief.csv'
     print(f'Getting new daily case statistics file...')

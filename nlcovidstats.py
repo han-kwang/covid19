@@ -52,6 +52,8 @@ DELAY_INF2REP = [
     ('2021-07-30', 4),
     ('2021-11-04', 4),
     ('2021-11-11', 4.5),
+    ('2021-11-20', 5),
+    ('2021-12-01', 5),
     ]
 
 
@@ -916,7 +918,9 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
     if source != 'r7':
         xnotes.append(source)
     if correct_anomalies:
-        anom_date = DFS['anomalies'].index[-1].strftime('%d %b') # most recent anomaly date
+        dfa = DFS['anomalies'].copy()
+        dfa = dfa.loc[dfa['fraction'] > 0]
+        anom_date = dfa.index[-1].strftime('%d %b') # most recent anomaly date
         xnotes.append(f'correctie pos. tests o.a. {anom_date}')
     if xnotes:
         xnotes = ", ".join([""]+xnotes)
@@ -1031,20 +1035,6 @@ def reset_plots():
     plt.close('all')
 
 
-def set_dense_minor_yticks(ax):
-    """If axis y range is less than 2 decades: override y ticks to include 1.5."""
-    ymin, ymax = ax.get_ylim()
-    if ymax/ymin > 100:
-        return
-    emin = np.floor(np.log10(ymin/4))
-    emax = np.ceil(np.log10(ymax*4))
-    mticks = np.array([1.5, 2, 3, 4, 5, 6, 7, 8, 9])
-    mticks = mticks * (10**np.arange(emin, emax).reshape(-1, 1))
-    mticks = mticks[(mticks > ymin/4) & (mticks < ymax*4)]
-    ax.yaxis.set_ticks(mticks, minor=True)
-    ax.set_ylim(ymin, ymax)
-
-
 def plot_barchart_daily_counts(istart=-70, istop=None, region='Nederland', figsize=(10, 4)):
     """Plot daily case counts and corrections (from anomalies).
 
@@ -1121,21 +1111,7 @@ def plot_barchart_daily_counts(istart=-70, istop=None, region='Nederland', figsi
     ax.set_ylabel('Positieve gevallen per dag')
     tools.set_xaxis_dateformat(ax)
     ax.grid(which='minor', axis='y')
-    import matplotlib.ticker as mt
-
-    class MyLogFormatter(mt.LogFormatter):
-        """Use SI prefixes for large values."""
-        def __call__(self, x, pos=None):
-            for mul, prefix in [(1e6, 'M'), (1e3, 'k'), (-1e99, '')]:
-                if x >= mul:
-                    break
-            return f'{x/mul:.3g}{prefix}'
-
-    formatter = MyLogFormatter(minor_thresholds=(2, 1))
-    ax.yaxis.set_minor_formatter(formatter)
-    ax.yaxis.set_major_formatter(formatter)
-
-    set_dense_minor_yticks(ax)
+    tools.set_yaxis_log_minor_labels(ax)
 
     title = f'Positieve tests per dag ({region}) - log schaal, rechte lijn = exponentiële groei'
     ax.set_title(title)
