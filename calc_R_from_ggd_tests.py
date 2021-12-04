@@ -117,18 +117,25 @@ def add_dataset(ax, Rs, delay_days, label, marker, color, err_fan=(7, 0.15)):
         ax.fill_between(Rs.index[-n:] - delay, Rsmooth1-fan, Rsmooth1+fan,
                         color=color, alpha=0.2)
 
-def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=False,
+def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=None,
                                 yscale=('log', 300, 25000)):
     """Plot RIVM daily cases and GGD positive tests together in one graph.
+
+    correct_anomalies is ignored. For backward compatibility.
 
     yscale: ('log', ymin, ymax) or ('linear', ymin, ymax)
     """
 
     df_ggd = load_ggd_pos_tests(-1)
+    df_mun_c, population = nlcs.get_region_data(
+        'Nederland', -1,
+        correct_anomalies=True
+        )
     df_mun, population = nlcs.get_region_data(
         'Nederland', -1,
-        correct_anomalies=correct_anomalies
+        correct_anomalies=False
         )
+
     corr = ' schatting datastoring' if correct_anomalies else ''
 
     fig, ax = plt.subplots(figsize=(10, 4), tight_layout=True)
@@ -140,26 +147,37 @@ def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=False,
             )
     # df_ggd timestamps daily at 12:00
     ax.step(df_ggd.index + pd.Timedelta('2.5 d'), df_ggd['n_pos'],
-            where='pre', alpha=0.7, color='red',
+            where='pre', alpha=0.6, color='#cc0000',
             label='GGD pos. tests (datum monstername + 2)'
             )
     ax.set_yscale(yscale[0])
     ax.set_ylim(*yscale[1:])
     dfa = nlcs.DFS['anomalies'].copy()  # index: date 10:00, columns ..., days_back
     dfa = dfa.loc[dfa['days_back'] < 0]  # discard non-shift disturbances
-    dfa['Date_anomaly'] = dfa.index + pd.to_timedelta(2/24 + dfa['days_back'].values, 'd')
+    # dfa['Date_anomaly'] = dfa.index + pd.to_timedelta(2/24 + dfa['days_back'].values, 'd')
 
-    mun_idxs = pd.DatetimeIndex([
-        df_mun.index[df_mun.index.get_loc(tm, method='nearest')]
-        for tm in dfa['Date_anomaly'].values
-        ])
+    # mun_idxs = pd.DatetimeIndex([
+    #     df_mun.index[df_mun.index.get_loc(tm, method='nearest')]
+    #     for tm in dfa['Date_anomaly'].values
+    #     ])
+
+    # show corrected values
+    mask_anom = df_mun['Delta'] != df_mun_c['Delta']
     ax.scatter(
-        mun_idxs + pd.Timedelta('2 h'),
-        df_mun.loc[mun_idxs, 'Delta']*population,
-        label='Datastoringen', marker='o', s=20,
+        df_mun.index[mask_anom],
+        df_mun_c.loc[mask_anom, 'Delta']*population,
+        s=20, marker='x', color='#004488',
+        label='RIVM schattingen i.v.m. datastoring',
         )
-    for tm in mun_idxs + pd.Timedelta('2 h'):
-        ax.axvline(tm, color='#4466aa', linestyle='--', alpha=0.3)
+
+
+    # ax.scatter(
+    #     mun_idxs + pd.Timedelta('2 h'),
+    #     df_mun.loc[mun_idxs, 'Delta']*population,
+    #     label='Datastoringen', marker='o', s=20,
+    #     )
+    #for tm in mun_idxs + pd.Timedelta('2 h'):
+    #    ax.axvline(tm, color='#4466aa', linestyle='--', alpha=0.3)
 
     ax.legend()
     ax.set_xlim(df_ggd.index[-num_days], df_ggd.index[-1] + pd.Timedelta(4, 'd'))
@@ -171,34 +189,45 @@ def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=False,
     fig.show()
 
 
-def plot_R_graph_multiple_methods(num_days=100):
+def plot_R_graph_multiple_methods(
+        num_days=100, ylim=(0.6, 1.5),
+        methods=('rivm', 'melding', 'ggd_wow', 'ggd_der', 'tvt')
+        ):
     """Plot national R graph with annotations and multiple calculation methods."""
-    dfR_rivm = nlcs.DFS['Rt_rivm'].copy()
+    # dfR_rivm = nlcs.DFS['Rt_rivm'].copy()
 
 
     #fig, ax = plt.subplots(figsize=(12, 4), tight_layout=True)
 
-    num_days = 100
     lastday = -1  # -1 for most recent
     # lastday = -10  # for testing.
     df = load_ggd_pos_tests(lastday=lastday, pattern_weeks=2)
-    nlcs.plot_Rt(num_days, lastday=lastday, delay=nlcs.DELAY_INF2REP, ylim=(0.6, 1.5))
+    nlcs.plot_Rt(
+        num_days,
+        regions=('Nederland' if 'melding' in methods else 'DUMMY'),
+        lastday=lastday, delay=nlcs.DELAY_INF2REP, ylim=ylim
+        )
     fig = plt.gcf()
     ax = fig.get_axes()[0]
 
-    ax.plot(dfR_rivm['R'], color='k')
-    add_dataset(ax, df['R_wow'], 6.5, 'GGD week-op-week', 'x', '#008800', err_fan=None)
-    add_dataset(ax, df['R_d7r'], 3.0, 'GGD afgeleide', '+', 'red', err_fan=None)
+    #    ax.plot(dfR_rivm['R'], color='k')
 
-    df_tvt = get_R_from_TvT()
-    ax.plot(df_tvt['R_interp'], color='purple', linestyle='--')
-    ax.errorbar(df_tvt.index, df_tvt['R'], df_tvt['R_err'],
-                color='purple', alpha=0.5)
-    ax.scatter(df_tvt.index, df_tvt['R'],
-                label='TvT %positief', color='purple', alpha=0.5)
+    if 'ggd_wow' in methods:
+        add_dataset(ax, df['R_wow'], 6.5, 'GGD week-op-week', 'x', '#008800', err_fan=None)
+    if 'ggd_der' in methods:
+        add_dataset(ax, df['R_d7r'], 3.0, 'GGD afgeleide', '+', 'red', err_fan=None)
+
+    if 'tvt' in methods:
+        df_tvt = get_R_from_TvT()
+        ax.plot(df_tvt['R_interp'], color='purple', linestyle='--', alpha=0.5)
+        ax.errorbar(df_tvt.index, df_tvt['R'], df_tvt['R_err'], alpha=0.5,
+                    color='purple')
+        ax.scatter(df_tvt.index, df_tvt['R'], marker='*', s=45,
+                    label='TvT %positief', color='purple', zorder=10)
 
 
-    ax.legend()
+    leg = ax.legend(framealpha=0.5)
+    leg.set_zorder(20)
 
 
 if __name__ == '__main__':

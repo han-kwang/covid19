@@ -34,6 +34,15 @@ def load_tvt_data():
     df = pd.DataFrame.from_records(
         records, columns=['Date_mid', 'Date_a', 'Date_b', 'num_test', 'num_pos']
         )
+
+    if df.iloc[-1]['Date_b'] < pd.to_datetime('now') - pd.to_timedelta('9 d, 15:15:00'):
+        print(
+            '** Warning: TvT data may be outdated. Update data/TvT.txt from '
+            'RIVM weekly report at '
+            'https://www.rivm.nl/coronavirus-covid-19/actueel/'
+            'wekelijkse-update-epidemiologische-situatie-covid-19-in-nederland .'
+            )
+
     df = df.set_index('Date_mid')
     df['f_pos'] = df['num_pos'] / df['num_test']
 

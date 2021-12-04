@@ -28,10 +28,10 @@ def update_ggd_tests(force=False):
 
     Set force=True to force; otherwise decide automatically.
     """
-    tm_now = pd.to_datetime('now')
+    tm_now = pd.Timestamp('now')
     daytime = tm_now.strftime('%H:%M:%S')
 
-    if daytime < '15:49:55':
+    if daytime < '15:14:55':
         fdate = (tm_now - pd.Timedelta('17 h')).strftime('%Y-%m-%d')
     else:
         fdate = tm_now.strftime('%Y-%m-%d')
@@ -43,7 +43,7 @@ def update_ggd_tests(force=False):
         print(f'GGD test data already up to date: {fname}.')
         return
 
-    if daytime < '15:15:10':
+    if daytime > '15:14:55' and daytime < '15:15:10':
         print("It's exactly 15:15; waiting a few seconds for RIVM to update...",
               end='', flush=True)
         time.sleep((pd.to_datetime('15:15:11') - pd.to_datetime(daytime)).seconds)
@@ -96,7 +96,7 @@ def load_ggd_pos_tests(fdate=-1, quiet=False):
     """
     if not isinstance(fdate, (str)):
         i_offs = int(fdate)
-        tm_now = pd.to_datetime('now')
+        tm_now = pd.Timestamp('now')
         daytime = tm_now.strftime('%H:%M')
         if daytime < '15:15':
             tm_now -= pd.Timedelta('20 h')
@@ -130,4 +130,4 @@ def load_ggd_pos_tests(fdate=-1, quiet=False):
     return df
 
 
-df = load_ggd_pos_tests()
+# df = load_ggd_pos_tests()

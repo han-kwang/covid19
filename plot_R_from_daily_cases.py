@@ -18,6 +18,7 @@ province_list = [
     'Zuid-Holland', 'Noord-Holland', 'Noord-Brabant', 'Gelderland',
    'Utrecht', 'Overijssel', 'Limburg', 'Friesland', 'Groningen', 'Drenthe',
    'Flevoland', 'Zeeland'
+
    ]
 province_list = ['Nederland'] + [f'P:{x}' for x in province_list]
 
@@ -28,7 +29,7 @@ if __name__ == '__main__':
     nlcs.reset_plots()
     nlcs.init_data(autoupdate=True)
     print('--Corrected data--')
-    nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)
+    # nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)
     nlcs.plot_Rt(ndays=120,
                  regions=['Nederland'], # , 'Bijbelgordel'],
                  lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
@@ -62,12 +63,12 @@ if __name__ == '__main__':
     nlcs.init_data(autoupdate=True)
 
     nlcs.plot_Rt(ndays=55, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
-             regions=['HR:Noord', 'HR:Midden', 'HR:Zuid'], ylim=(0.6, 1.2),
+             regions=['HR:Midden+Noord', 'HR:Zuid'], ylim=(0.7, 1.6),
              only_trendlines=False)
 
     #%%
     nlcs.plot_daily_trends(
-        45,  region_list=['HR:Noord', 'HR:Midden', 'HR:Zuid']
+        45,  region_list=['HR:Midden+Noord', 'HR:Zuid']
     )
     nlcs.plot_daily_trends(
         380,  region_list=['Nederland', 'Bijbelgordel']
@@ -75,7 +76,7 @@ if __name__ == '__main__':
 
 
     #%% R graph of cities, provinces
-    #nlcs.plot_Rt(ndays=200, lastday=-1, delay=nlcs.DELAYhttps://nos.nl/liveblog/2386246_INF2REP, source='r7', correct_anomalies=True)
+    #nlcs.plot_Rt(ndays=200, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True)
     nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,
                  regions=city_list, only_trendlines=True, ylim=(0.5, 1.5))
     nlcs.plot_Rt(ndays=42, lastday=-1, delay=nlcs.DELAY_INF2REP, source='r7', correct_anomalies=True,

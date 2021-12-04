@@ -37,6 +37,7 @@ from nlcovidstats_data import (
 # These delay values are tuned to match the RIVM Rt estimates.
 # The represent the delay (days) from infection to report date,
 # referencing the report date.
+# Extrapolation: constant value.
 DELAY_INF2REP = [
     ('2020-07-01', 7.5),
     ('2020-09-01', 7),
@@ -53,7 +54,8 @@ DELAY_INF2REP = [
     ('2021-11-04', 4),
     ('2021-11-11', 4.5),
     ('2021-11-20', 5),
-    ('2021-12-01', 5),
+    ('2021-11-25', 5),
+    ('2021-12-15', 4), # Speculation...
     ]
 
 
@@ -299,7 +301,8 @@ def construct_Dfunc(delays, plot=False):
 
     Parameter:
 
-    - delays: tuples (datetime_report, delay_days)
+    - delays: tuples (datetime_report, delay_days). Extrapolation is at
+      constant value.
     - plot: whether to generate a plot.
 
     Return:
@@ -777,6 +780,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
     - regions: comma-separated string (or list of str);
       'Nederland', 'V:xx' (holiday region), 'P:xx' (province), 'M:xx'
       (municipality).
+      set to 'DUMMY' or '' to plot only RIVM curve.
     - correct_anomalies: whether to correct for known reporting anomalies.
     - g_mobility: include Google mobility data (experimental, not very usable yet).
     - mode: 'show' or 'return_fig'
@@ -804,10 +808,16 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
     labels = [] # tuples (y, txt)
     if isinstance(regions, str):
         regions = regions.split(',')
+    if len(regions) == 0:
+        regions = ['DUMMY']
+
 
     for i_region, (region, color, marker) in enumerate(zip(regions, colors, markers)):
 
-        df1, _npop = get_region_data(region, lastday=lastday, correct_anomalies=correct_anomalies)
+        df1, _npop = get_region_data(
+            'Nederland' if region=='DUMMY' else region,
+            lastday=lastday, correct_anomalies=correct_anomalies
+            )
         source_col = dict(r7='Delta7r', sg='DeltaSG')[source]
 
         # skip the first 10 days because of zeros
@@ -830,7 +840,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
         else:
             label = re.sub('^[A-Z]+:', '', region)
 
-        if not only_trendlines:
+        if not only_trendlines and region != 'DUMMY':
             ax.plot(Rt[:-3], fmt, label=label, marker=marker, markersize=psize, color=color)
             ax.plot(Rt[-3:], fmt, markersize=psize, color=color, marker=marker, alpha=0.35)
 
@@ -877,18 +887,18 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
         elif only_trendlines:
             label = re.sub('^.*:', '', region)
 
-        smooth_line = ax.plot(Rt_smooth[:-5], color=color, alpha=1, zorder=0,
-                              linestyle=('-' if i_region < 10 else '-.'),
-                              label=label
-                              )
-        ax.plot(Rt_smooth[-6:], color=color, alpha=1, zorder=0,
-                linestyle='--', dashes=(2,2))
+        if region != 'DUMMY':
+            smooth_line = ax.plot(Rt_smooth[:-5], color=color, alpha=1, zorder=0,
+                                  linestyle=('-' if i_region < 10 else '-.'),
+                                  label=label
+                                  )
+            ax.plot(Rt_smooth[-6:], color=color, alpha=1, zorder=0,
+                    linestyle='--', dashes=(2,2))
 
-        labels.append((Rt[-1], f' {label}'))
+            labels.append((Rt[-1], f' {label}'))
 
     if len(labels) == 0:
-        fig.close()
-        raise ValueError(f'No data to plot.')
+        print('Note: no regions to plot.')
 
     if Rt_rivm is not None:
         tm_lo, tm_hi = Rt.index[[0, -1]] # lowest timestamp
@@ -896,7 +906,8 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
         # final values
         df_Rt_rivm_final = Rt_rivm.loc[tm_lo:tm_rivm_est, ['R', 'Rt_update']]
         ax.plot(df_Rt_rivm_final.iloc[:-1]['R'], 'k-', label='RIVM')
-        ax.plot(df_Rt_rivm_final.iloc[:-1]['Rt_update'], 'k^', markersize=4, label='RIVM updates')
+        ax.plot(df_Rt_rivm_final.iloc[:-1]['Rt_update'], 'k^', markersize=4,
+                label='RIVM updates', zorder=10)
         # estimates
         Rt_rivm_est = Rt_rivm.loc[tm_rivm_est-pd.Timedelta(1, 'd'):Rt.index[-1]]
         # print(Rt_rivm_est)
