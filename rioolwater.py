@@ -8,7 +8,6 @@ author: hk_nien @ twitter
 import nlcovidstats as nlcs
 nlcs.init_data()
 import numpy as np
-
 import pandas as pd
 
 # https://data.rivm.nl/covid-19/COVID-19_rioolwaterdata.csv
@@ -95,7 +94,9 @@ axR.plot(sum_df['GF'], label=f'Rioolwater (vertraging {delay} d)', color='#aaaaa
 axR.plot(sum_df['GF_smooth'], label=f'Rioolwater (gladgestreken)', color=colors[0],
          ls='--')
 axR.plot(nlcs.DFS['Rt_rivm']['R']**(7/4), label='o.b.v RIVM R', color=colors[1])
-axR.set_xlim(sum_df.index[0], sum_df.index[1-delay if delay > 2 else -1])
+
+axR.set_xlim(pd.to_datetime('2020-09-18'),
+             sum_df.index[1-delay if delay > 2 else -1])
 axR.set_ylim(0.3, 3)
 axR.legend()
 axR.grid()

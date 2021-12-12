@@ -34,21 +34,30 @@ if __name__ == '__main__':
     nlcs.init_data(autoupdate=True)
     ncd.check_RIVM_message()
     print('---GGD tests---')
-    ggd_tests.plot_daily_tests_and_delays('2021-09-01')
+    ggd_tests.plot_daily_tests_and_delays('2021-09-15')
     # ggd_tests.plot_daily_tests_and_delays('2021-09-01', src_col='n_pos')
     plt.pause(0.25)
     print('--R calculation--')
-    ggd_R.plot_rivm_and_ggd_positives(140, yscale=('log', 700, 30000))
+    ggd_R.plot_rivm_and_ggd_positives(140, yscale=('log', 1000, 30000))
     plt.pause(0.25)
     ggd_R.plot_R_graph_multiple_methods(num_days=100)
     plt.pause(0.25)
     nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)
 
     #%%
-    plt.close('all')
-    nlcs.init_data(autoupdate=True)
-    #ggd_R.plot_rivm_and_ggd_positives(25, yscale=('linear', 7000, 25000))
-    #plt.pause(0.4)
-    ggd_R.plot_rivm_and_ggd_positives(25, True, yscale=('linear', 5000, 25000))
+    if 0:
+        #%% check recent anomaly correction
+        plt.close('all')
+        nlcs.init_data(autoupdate=True)
+        #ggd_R.plot_rivm_and_ggd_positives(25, yscale=('linear', 7000, 25000))
+        #plt.pause(0.4)
+        ggd_R.plot_rivm_and_ggd_positives(25, True, yscale=('linear', 5000, 25000))
+
+        #%% Show TvT performance
+        ggd_R.plot_R_graph_multiple_methods(
+            num_days=240, ylim=(-0.9, 4.2),
+            methods=('rivm', 'melding', 'tvt'),
+            )
+
 
 
