@@ -10,7 +10,7 @@ nlcs.init_data()
 import numpy as np
 import pandas as pd
 
-# https://data.rivm.nl/covid-19/COVID-19_rioolwaterdata.csv
+# wget -O data/COVID-19_rioolwaterdata.csv https://data.rivm.nl/covid-19/COVID-19_rioolwaterdata.csv
 df=  pd.read_csv('data/COVID-19_rioolwaterdata.csv', sep=';')
 print(f'Rioolwater latest date: {df["Date_measurement"].max()}')
 df_saved = df.copy()

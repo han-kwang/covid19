@@ -43,10 +43,11 @@ def update_ggd_tests(force=False):
         print(f'GGD test data already up to date: {fname}.')
         return
 
-    if daytime > '15:14:55' and daytime < '15:15:20':
-        print("It's exactly 15:15; waiting a few seconds for RIVM to update...",
+    if daytime > '15:14:55' and daytime < '15:15:30':
+        wait_time = (pd.to_datetime('15:15:21') - pd.to_datetime(daytime)).seconds
+        print(f"It's exactly 15:15; waiting a {wait_time} s for RIVM to update...",
               end='', flush=True)
-        time.sleep((pd.to_datetime('15:15:21') - pd.to_datetime(daytime)).seconds)
+        time.sleep(wait_time)
         print('done.')
 
 

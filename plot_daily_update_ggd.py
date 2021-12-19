@@ -30,11 +30,10 @@ if __name__ == '__main__':
     plt.close('all')
     nlcs.reset_plots()
     ggd_data.update_ggd_tests()
-
     nlcs.init_data(autoupdate=True)
     ncd.check_RIVM_message()
     print('---GGD tests---')
-    ggd_tests.plot_daily_tests_and_delays('2021-09-15')
+    ggd_tests.plot_daily_tests_and_delays('2021-10-01')
     # ggd_tests.plot_daily_tests_and_delays('2021-09-01', src_col='n_pos')
     plt.pause(0.25)
     print('--R calculation--')

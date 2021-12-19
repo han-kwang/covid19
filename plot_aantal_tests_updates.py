@@ -123,7 +123,7 @@ def plot_daily_tests_and_delays(date_min, date_max='2099-01-01', src_col='n_test
             df.at[sdate, j] = np.nan
 
 
-    fig, ax = plt.subplots(figsize=(7.5, 5), tight_layout=True)
+    fig, ax = plt.subplots(figsize=(9, 5), tight_layout=True)
     barwidth = pd.Timedelta(1, 'd')
 
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b',
