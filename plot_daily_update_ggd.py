@@ -29,7 +29,7 @@ if __name__ == '__main__':
 
     plt.close('all')
     nlcs.reset_plots()
-    ggd_data.update_ggd_tests()
+    ggd_data.update_ggd_tests(force=1)  # updated at :45
     nlcs.init_data(autoupdate=True)
     ncd.check_RIVM_message()
     print('---GGD tests---')
@@ -57,6 +57,16 @@ if __name__ == '__main__':
             num_days=240, ylim=(-0.9, 4.2),
             methods=('rivm', 'melding', 'tvt'),
             )
-
-
+        #%% GGD tests in regions
+        fig, ax = plt.subplots(figsize=(7, 4), tight_layout=True)
+        for rre in ['Utrecht', 'Midden- en West-Brabant', 'Groningen', 'Drenthe', 'Twente']:
+            df = ggd_data.load_ggd_pos_tests(region_regexp=rre)
+            ax.step(df.index[-100:], df['n_tested'][-100:], where='mid', label=rre)
+        ax.set_yscale('log')
+        ax.set_title('Uitgevoerde GGD tests per regio')
+        ax.set_xlabel('Datum monstername')
+        ax.legend()
+        import tools
+        tools.set_xaxis_dateformat(ax)
+        fig.show()
 

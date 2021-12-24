@@ -77,7 +77,7 @@ def update_ggd_tests(force=False):
     print(f'Wrote {fpath}')
 
 
-def load_ggd_pos_tests(fdate=-1, quiet=False):
+def load_ggd_pos_tests(fdate=-1, quiet=False, region_regexp=None):
     """Get latest GGD test data as DataFrame.
 
     Parameters:
@@ -86,6 +86,8 @@ def load_ggd_pos_tests(fdate=-1, quiet=False):
       with fdate=-1 referring to today's data; -2 to yesterday's, and so on.
       (before 15:15 local time, one day earlier).
     - quiet: True to suppress 'loaded ...' messages.
+    - region_regexp: optional regular expression to match against
+      Security_region_name.
 
     Return DataFrame:
 
@@ -123,6 +125,15 @@ def load_ggd_pos_tests(fdate=-1, quiet=False):
               inplace=True)
     df['Date_tested'] = pd.to_datetime(df['Date_tested'])
     df.drop(columns='Date_of_report', inplace=True)
+    if region_regexp:
+        df1 = df.loc[df['Security_region_name'].str.match(region_regexp)]
+        if len(df1) == 0:
+            known_regions = sorted(df['Security_region_name'].unique())
+            print(f'Regions available: {", ".join(known_regions)}.')
+            raise ValueError(f'No match of {region_regexp!r}.')
+        else:
+            df = df1
+
     df = df.groupby('Date_tested').sum()
 
     bad_dates = ['2021-02-07']
