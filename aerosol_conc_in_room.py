@@ -1,5 +1,4 @@
-"""x
-Show aerosol concentration in room with, without ventilation.
+"""Show aerosol concentration in room with, without ventilation.
 
 https://rijksoverheid.bouwbesluit.com/Inhoud/docs/wet/bb2012/hfd3/afd3-6
 https://rijksoverheid.bouwbesluit.com/Inhoud/docs/wet/bb2012/hfd3/afd3-6?tableid=docs/wet/bb2012[26]/hfd3/afd3-6/par3-6-1
@@ -54,8 +53,8 @@ class Simulation:
     - vrs: volume-rate array (m3/s)
     - ns: number-of-persons array
     - concs: concentrations array (1/m3)
-    - concs_v2s: concentrations array from visitors exposing self
-    - concs_s2v: concentrations from self exposing visitors
+    - concs_s: concentrations array from self
+    - concs_v: concentrations from visitors
     - exps: cumulative-exposures array (s/m3)
     - exps_v2s: exposures visitor->self
     - exps_s2v: exposures self->visitors
@@ -73,76 +72,95 @@ class Simulation:
         tms = np.arange(tstart, tend+tstep/2, tstep)
         vrs = np.zeros_like(tms)
         ns = np.zeros_like(tms)
-
         for t, vr, n in seq:
             ia = int(t/tstep + 0.5)
             vrs[ia:] = vr
             ns[ia:] = n
 
+        ns_self = np.full(ns.shape, nself)
+        ns_self = np.where(ns < nself, ns, ns_self)
+        ns_vis = ns - ns_self
+
+        # simulate
+        self.concs = self._simulate(tms, vrs, ns, V, method=method)
+        self.concs_v = self._simulate(tms, vrs, ns_vis, V, method=method)
+        self.concs_s = self._simulate(tms, vrs, ns_self, V, method=method)
+
+        self.tms = tms
+        self.vrs = vrs
+        self.ns = ns
+
+        # cumulative is a bit more tricky. Visitors exposure only counts when
+        # they're present.
+        self.exps = np.cumsum(self.concs) * tstep
+        self.exps_v2s = np.cumsum(self.concs_v) * tstep
+
+        concs_s2v = np.where(ns_vis > 0, self.concs_s, 0)
+        self.exps_s2v = np.cumsum(concs_s2v) * tstep
+        self.desc = desc
+
+    @staticmethod
+    def _simulate(tms, vrs, ns, V, method='cn'):
+        """Simulation without accounting for us/them distribution.
+
+        Return: concentrations array.
+        """
+
         # simulate
         concs = np.zeros_like(tms)
-        concs_v2s = concs.copy()
-        concs_s2v = concs.copy()
         assert method in ('eu', 'cn')
 
-        def nextcon(cs, i, nsrc):
-            if method == 'eu':
-                # Euler method - not accurate, for testing only
-                cs[i+1] = cs[i] * (1 - kdt) + nsrc*tstep
-            else:
-                # Crank-Nicholson implicit method - more accurate
-                # even at large time steps
-                cs[i+1] = (cs[i] * (1 - kdt/2) + nsrc*tstep) / (1 + kdt/2)
-
+        kdt = np.nan  # depletion per timestep.
+        tstep = np.nan
         kdt_max = -1
         for i in range(len(vrs) - 1):
             # Differential equation:
             # dc/dt = -k c + n
             # with k = vr/V
+            tstep = tms[i+1] - tms[i]
             kdt = vrs[i]/V * tstep
             kdt_max = max(kdt, kdt_max)
             n = ns[i]
-            n_other = max(0, n - nself)
-            n_self_now = n - n_other
-            n_s2o = n_self_now if n_other > 0 else 0
-            nextcon(concs, i, n)
-            nextcon(concs_v2s, i, n_other)
-            if n_s2o > 0:
-                nextcon(concs_s2v, i, n_s2o)
+            if method == 'eu':
+                # Euler method - not accurate, for testing only
+                concs[i+1] = concs[i] * (1 - kdt) + n*tstep/V
             else:
-                concs_s2v[i+1] = 0
+                # Crank-Nicholson implicit method - more accurate
+                # even at large time steps
+                concs[i+1] = (concs[i] * (1 - kdt/2) + n*tstep/V) / (1 + kdt/2)
+
 
         if kdt_max > 0.5:
-            print(f'Warning: k*dt={kdt_max:.2g} should be << 1 ({desc})')
+            print(f'Warning: k*dt={kdt_max:.2g} should be << 1')
 
-        self.tms = tms
-        self.vrs = vrs
-        self.ns = ns
-        self.concs = concs
-        self.concs_v2s = concs_v2s
-        self.concs_s2v = concs_s2v
-
-        self.exps = np.cumsum(concs) * tstep
-        self.exps_v2s = np.cumsum(concs_v2s) * tstep
-        self.exps_s2v = np.cumsum(concs_s2v) * tstep
-        self.desc = desc
+        return concs
 
 
-    def plot(self, *args):
-        """Plot data. Optionally also plot others as specified."""
+
+    def plot(self, *args, split_concs=True):
+        """Plot data. Optionally also plot others as specified.
+
+        Set split_concs=False to only show total concentrations and not
+        separately for 'bewoners' and visitors.
+        """
 
         datasets = [self] + list(args)
 
         fig, axs = plt.subplots(4, 1, tight_layout=True, sharex=True,
-                                figsize=(6, 8))
+                                figsize=(7, 9))
         axs[0].set_title('\n\nAantal personen')
         axs[1].set_title('Ventilatiesnelheid (m³/h)')
-        axs[2].set_title(
-            'Aerosolconcentratie (m$^{-3}$)\n'
-            'bezoek → bewoners (—), bewoners → bezoek (- -)')
-        axs[3].set_title(
-            'Aerosoldosis (h m$^{-3}$)\n'
-            'bezoek → bewoners (—), bewoners → bezoek (- -)')
+
+        if split_concs:
+            axs[2].set_title(
+                'Aerosolconcentratie (m$^{-3}$)\n'
+                'Van bezoek (—), van bewoners (- -), totaal (⋯)')
+            axs[3].set_title(
+                'Aerosoldosis (h m$^{-3}$)\n'
+                'bezoek → bewoners (—), bewoners → bezoek (- -)')
+        else:
+            axs[2].set_title('Aerosolconcentratie (m$^{-3}$)')
+            axs[3].set_title('Aerosoldosis (h m$^{-3}$)')
         axs[3].set_xlabel('Tijd (h)')
 
         from matplotlib.ticker import MaxNLocator
@@ -163,14 +181,27 @@ class Simulation:
             ax.plot(ds.tms, ds.vrs, color=col, label=ds.desc, **xargs)
 
             ax = axs[2]
-            ax.plot(ds.tms, ds.concs_v2s, color=col, ls='-', **xargs)
-            ax.plot(ds.tms, ds.concs_s2v, color=col, ls=dstyle, **xargs)
+            if split_concs:
+                ax.plot(ds.tms, ds.concs_s, color=col, ls='-', **xargs)
+                ax.plot(ds.tms, ds.concs_v, color=col, ls=dstyle, **xargs)
+                ax.plot(ds.tms, ds.concs, color=col, ls=':', **xargs)
+            else:
+                ax.plot(ds.tms, ds.concs, color=col, ls='-', **xargs)
+
+            # get equivalent CO2 ppm values
+            c2ppm = lambda c: 420 + c*1.67e4
+            ppm2c = lambda p: (p-420)/1.67e4
+
+            ax2 = ax.secondary_yaxis("right", functions=(c2ppm, ppm2c))
+            ax2.set_ylabel('CO$_2$ conc (ppm)')
 
             ax = axs[3]
             # ax.plot(ds.tms, ds.exps, color=col, **xargs)
-            ax.plot(ds.tms, ds.exps_v2s, color=col, ls='-', **xargs)
-            ax.plot(ds.tms, ds.exps_s2v, color=col, ls=dstyle, **xargs)
-
+            if split_concs:
+                ax.plot(ds.tms, ds.exps_v2s, color=col, ls='-', **xargs)
+                ax.plot(ds.tms, ds.exps_s2v, color=col, ls=dstyle, **xargs)
+            else:
+                ax.plot(ds.tms, ds.exps, color=col, ls='-', **xargs)
 
         for ax in axs:
             ax.tick_params(axis='y', which='minor')
@@ -178,7 +209,7 @@ class Simulation:
             ax.grid()
             # ax.legend()
 
-        axs[1].legend()
+        axs[1].legend(loc='upper left', bbox_to_anchor=(1, 1))
         for ax in axs:
             ymax = ax.get_ylim()[1]
             ax.set_ylim(-ymax/50, ymax*1.1)
@@ -245,7 +276,7 @@ if __name__ == '__main__':
         tstep=0.1,
         method='cn',
         )
-    # Note: flow rates tweaked a bit to avoid overlapping lines in plot.
+    # Note: flow rates tweaked a bit to avoid overlapping lines in plot.2
     sim1 = Simulation([
         (0, 90, 2),
         (2, 90, 6),
@@ -276,5 +307,6 @@ if __name__ == '__main__':
         **simparams
         )
 
-    sim1.plot(sim2, sim3)
+    sim1.plot(sim2, sim3, split_concs=False)
+    sim1.plot(sim2, sim3, split_concs=True)
     plt.gcf().suptitle('Voorbeeld ventilatie en aerosolen woonkamer // @hk_nien')
