@@ -20,6 +20,7 @@ from pathlib import Path
 import time
 import pandas as pd
 import nl_regions
+import tools
 
 
 try:
@@ -380,6 +381,8 @@ def init_data(autoupdate=True, Rt_source='rivm'):
       sources.
     - Rt_source: 'rivm' or 'coronawatchnl' (where to download Rt data).
     """
+    if autoupdate:
+        tools.wait_for_refresh('15:14:55', '15:15:20')
 
     DFS['cases'] = df = load_cumulative_cases(autoupdate=autoupdate)
     DFS['mun'] = nl_regions.get_municipality_data()

@@ -9,11 +9,11 @@ Created on Sun Nov 28 20:34:13 2021
 
 from pathlib import Path
 import urllib
-import time
 import re
 import gzip
 import numpy as np
 import pandas as pd
+import tools
 
 # Look in these locations. Download into first location.
 DATA_PATHS = [
@@ -29,6 +29,7 @@ def update_ggd_tests(force=False):
     Set force=True to force; otherwise decide automatically.
     """
     tm_now = pd.Timestamp('now')
+
     daytime = tm_now.strftime('%H:%M:%S')
 
     if daytime < '15:14:55':
@@ -42,14 +43,7 @@ def update_ggd_tests(force=False):
     if fpath.is_file() and not force:
         print(f'GGD test data already up to date: {fname}.')
         return
-
-    if daytime > '15:14:55' and daytime < '15:15:30':
-        wait_time = (pd.to_datetime('15:15:21') - pd.to_datetime(daytime)).seconds
-        print(f"It's exactly 15:15; waiting a {wait_time} s for RIVM to update...",
-              end='', flush=True)
-        time.sleep(wait_time)
-        print('done.')
-
+    tools.wait_for_refresh('15:14:55', '15:15:45', 'Waiting until {t2} for GGD data')
 
     url = 'https://data.rivm.nl/covid-19/COVID-19_uitgevoerde_testen.csv'
     print(f'Getting latest GGD test data from RIVM...')
@@ -63,6 +57,15 @@ def update_ggd_tests(force=False):
     # 2,2021-11-20 09:00:00Z,2020-06-01,VR01,Groningen,2,0
 
     lines = csv_bytes.decode('utf-8').splitlines()
+
+    # check that this is the date we want
+    fdate_downloaded = lines[1].split(';')[1].split(' ')[0]
+    if fdate_downloaded != fdate:
+        tm_now = pd.Timestamp('now').strftime('%Y-%m-%d %H:%M:%S')
+        raise ValueError(
+            f'GGD data download: expected file date {fdate}, got {fdate_downloaded}. Now is {tm_now}.'
+            )
+
     lines = [
         re.sub(r'00:00,', r'00:00Z,', li.replace(';', ','))
         for li in lines

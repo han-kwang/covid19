@@ -141,15 +141,24 @@ def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=None,
     fig, ax = plt.subplots(figsize=(10, 4), tight_layout=True)
     ax.set_title('Positieve tests per dag')
     # df_mun timestamps daily at 10:00
+    col = '#0044cc'
     ax.step(df_mun.index + pd.Timedelta('14 h'), df_mun['Delta']*population,
-            where='pre',
+            where='pre', color=col,
             label=f'RIVM meldingen (gemeentes){corr}'
             )
+    ax.plot(df_mun.index + pd.Timedelta('14 h'), df_mun['Delta7r']*population,
+            color=col, linestyle='-', alpha=0.4
+            )
     # df_ggd timestamps daily at 12:00
+    col = '#cc0000'
     ax.step(df_ggd.index + pd.Timedelta('2.5 d'), df_ggd['n_pos'],
-            where='pre', alpha=0.6, color='#cc0000',
+            where='pre', alpha=0.6, color=col,
             label='GGD pos. tests (datum monstername + 2)'
             )
+    ax.plot(df_ggd.index + pd.Timedelta('2.5 d'), df_ggd['n_pos_7'],
+            alpha=0.4, color=col, linestyle='-'
+            )
+
     ax.set_yscale(yscale[0])
     ax.set_ylim(*yscale[1:])
     dfa = nlcs.DFS['anomalies'].copy()  # index: date 10:00, columns ..., days_back

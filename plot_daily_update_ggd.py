@@ -17,6 +17,7 @@ import plot_aantal_tests_updates as ggd_tests
 import calc_R_from_ggd_tests as ggd_R
 import ggd_data
 import os
+import tools
 
 
 # def download_ggd_tests(force=False):
@@ -28,9 +29,10 @@ import os
 if __name__ == '__main__':
 
     plt.close('all')
+    tools.wait_for_refresh('15:00:00', '15:15:00')
     nlcs.reset_plots()
-    ggd_data.update_ggd_tests(force=1)  # updated at :45
     nlcs.init_data(autoupdate=True)
+    ggd_data.update_ggd_tests()
     ncd.check_RIVM_message()
     print('---GGD tests---')
     ggd_tests.plot_daily_tests_and_delays('2021-10-01')
@@ -39,7 +41,8 @@ if __name__ == '__main__':
     print('--R calculation--')
     ggd_R.plot_rivm_and_ggd_positives(140, yscale=('log', 1000, 30000))
     plt.pause(0.25)
-    ggd_R.plot_R_graph_multiple_methods(num_days=100)
+    ggd_R.plot_R_graph_multiple_methods(num_days=100, ylim=(0.5, 1.8))
+    plt.gcf().get_axes()[0].legend(loc='upper left')
     plt.pause(0.25)
     nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)
 

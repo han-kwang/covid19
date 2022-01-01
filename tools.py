@@ -4,12 +4,15 @@
 
 - pause_commandline(): prompt user to continue (when outside Spyder).
 - set_xaxis_dateformat(): set layout parameters for date x-axis.
+- wait_for_refresh(): Pause if time of day is in specified range.
 """
 import os
+import time
 import matplotlib.pyplot as plt
 import matplotlib
 import pandas as pd
 import numpy as np
+
 
 def pause_commandline(msg='Press Enter to continue.'):
     """Prompt user to continue (when outside Spyder).
@@ -127,6 +130,16 @@ def set_yaxis_log_minor_labels(ax):
     set_dense_minor_yticks(ax)
 
 
+def wait_for_refresh(t1='15:14:55', t2='15:15:20', msg='Waiting until {t2}'):
+    """If time of day is in specified range, pause."""
+    t_now = pd.Timestamp('now')
+    if t1 < t_now.strftime('%H:%M:%S') < t2:
+        wait_time = (pd.Timestamp(t2) - t_now) / pd.Timedelta('1 s')
+        print(f'Waiting {wait_time:.0f} s until {t2}...', end='', flush=True)
+        time.sleep(max(wait_time, 1))
+        print('ready!')
+
 if __name__ == '__main__':
+
 
     _test_set_xaxis_dateformat()

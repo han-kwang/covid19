@@ -365,13 +365,14 @@ def construct_Dfunc(delays, plot=False):
     return fD, fdD, delay_str
 
 
-def estimate_Rt_df(r, delay=9, Tc=4.0):
+def estimate_Rt_df(r, delay='DEFAULT', Tc=4.0):
     """Return Rt data, assuming delay infection-reporting.
 
     - r: Series with smoothed new reported cases.
       (e.g. 7-day rolling average or other smoothed data).
     - delay: assume delay days from infection to positive report.
       alternatively: list of (timestamp, delay) tuples if the delay varies over time.
+      'DEFAULT' for default list.
       The timestamps refer to the date of report.
     - Tc: assume generation interval.
 
@@ -379,7 +380,8 @@ def estimate_Rt_df(r, delay=9, Tc=4.0):
 
     - DataFrame with columns 'Rt' and 'delay'.
     """
-
+    if isinstance(delay, str) and delay == 'DEFAULT':
+        delay = DELAY_INF2REP
     if not hasattr(delay, '__getitem__'):
         # simple delay - attach data to index with proper offset
         log_r = np.log(r.to_numpy()) # shape (n,)
@@ -766,7 +768,7 @@ def _coord_format_Rplot(axR, axD, Tgen):
 
 
 
-def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
+def plot_Rt(ndays=100, lastday=-1, delay='DEFAULT', regions='Nederland', source='r7',
             Tc=4.0, correct_anomalies=True, g_mobility=False, mode='show',
             ylim=None, only_trendlines=False):
     """Plot R number based on growth/shrink in daily cases.
@@ -775,6 +777,7 @@ def plot_Rt(ndays=100, lastday=-1, delay=9, regions='Nederland', source='r7',
     - delay: assume delay days from infection to positive report.
       alternatively: list of (timestamp, delay) tuples if the delay varies over time.
       The timestamps refer to the date of report. See doc of estimeate_Rt_series.
+      alternatively: 'DEFAULT' for default list.
     - source: 'r7' or 'sg' for rolling 7-day average or Savitsky-Golay-
       filtered data.
     - Tc: generation interval timepd.to_datetime(matplotlib.dates.num2date(ax.get_xlim()))
