@@ -114,3 +114,20 @@ if __name__ == '__main__':
     nlcs.init_data()
     nlcs.plot_barchart_daily_counts(-100, None)
     #nlcs.plot_barchart_daily_counts(-180, -70)
+
+    #%%
+
+
+import json
+json_high = json.dumps(dict(
+    muns=[
+        'Amsterdam', "'s-Gravenhage", 'Utrecht', 'Tilburg', 'Groningen',
+        'Nijmegen', 'Uden', 'Stadskanaal'],
+    label='Drukke teststraten'
+    ))
+nlcs.plot_daily_trends(
+    120,  region_list=['Nederland', f'JSON:{json_high}']
+    )
+
+
+

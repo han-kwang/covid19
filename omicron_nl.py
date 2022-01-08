@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
+"""To run this, the script needs to have access to GGD positive-test data.
+It should auto-download that, but I haven't tested that on a clean repository.
+
 Created on Sun Dec 12 18:20:28 2021
 
 Twitter: @hk_nien
@@ -32,14 +34,22 @@ def add_or_stats(df):
     if 'sdate' in df.columns:
         df.set_index('sdate', inplace=True)
 
-    s_nneg = df['ntest'] - df['npos']
-    df['or'] = df['npos'] / s_nneg
+    s_ntot = df['ntest'].copy()
+    s_npos = df['npos'].copy()
+    s_nneg = s_ntot - s_npos
 
-    # binomial distribution standard deviation
-    df['or_std'] = np.sqrt(df['ntest'] * df['npos']) * s_nneg**(-1.5)
+    # To prevent OR=infinity for nneg=0 assume that there is at least 0.5 negative.
+    s_npos[s_nneg == 0] -= 0.5
+    s_nneg[s_nneg == 0] = 0.5
 
-    # tweak to get nonzero errors for npos=0
-    df['or_std'] = np.sqrt(df['or_std']**2 + (0.5/df['ntest'])**2)
+    odds = s_npos/s_nneg
+    or_var= s_ntot * s_npos / s_nneg**3
+
+    # tweak to get nonzero errors for npos~0 and nneg~0
+    or_var += (0.5/s_ntot)**2 + (0.5*odds/s_nneg)**2
+
+    df['or'] = odds
+    df['or_std'] = np.sqrt(or_var)  # standard error
 
     # Remove days with zero. This is not entirely correct, but
     # too much work to do a real binomial fit.
@@ -61,9 +71,11 @@ def get_data_dk(plot=True, fig_ax=None):
     - df: DataFrame with index sdate (sample date), columns including
       ntest, npos.
 
-    Source: https://www.ssi.dk/
+    Source: linked from https://covid19.ssi.dk/virusvarianter/omikron
+
     # https://www.ssi.dk/-/media/cdn/files/covid19/omikron/statusrapport/rapport-omikronvarianten-18122021-wj25.pdf?la=da
-    https://www.ssi.dk/-/media/cdn/files/covid19/omikron/statusrapport/rapport-omikronvarianten-21122021-14tk.pdf?la=da
+    # https://www.ssi.dk/-/media/cdn/files/covid19/omikron/statusrapport/rapport-omikronvarianten-21122021-14tk.pdf?la=da
+    # https://files.ssi.dk/covid19/omikron/statusrapport/rapport-omikronvarianten-07012022-27nk
     """
 
     # Sample_date, ...., %omicron CI-95
@@ -94,15 +106,22 @@ def get_data_dk(plot=True, fig_ax=None):
     14-12-2021 11,539 420 3,963 9,981 39.7% 38.7%-40.7%
     15-12-2021 11,235 421 4,658 9,860 47.2% 46.3%-48.2%
     16-12-2021 10,603 471 4,273 8,952 47.7% 46.7%-48.8%
-    17-12-2021 11,075 402 4,999 9,311 53.7% 52.7%-54.7%
-    18-12-2021 10,465 178 4,889 8,559 57.1% 56.1%-58.2%
-    19-12-2021 10,640 113 4,625 7,343 63,0% 61.9%-64.1%
-    20-12-2021 13,954 149 1,633 2,548 64.1% 62.2%-66%
-    21-12-2021 13,722 101 2,366 3,096 76.4% 74.9%-77.9%
-    22-12-2021 12,299 90 1,022 1,292 79.1% 76.8%-81.3%
-    23-12-2021 13,298 63 2,587 3,259 79.4% 78%-80.8%
-    24-12-2021 7,428 62 505 602 83.9% 80.7%-86.7%
-    25-12-2021 8,264 91 677 859 78.8% 75.9%-81.5%
+    17-12-2021 11075 402 4999 9312 53.7% 52.7%-54.7%
+    18-12-2021 10,465 178 4889 8559 57.1% 56.1%-58.2%
+    19-12-2021 10641 113 4625 7343 63.0% 61.9%-64.1%
+    20-12-2021 13,954 150 1635 2551 64.1% 62.2%-66%
+    21-12-2021 13723 101 2373 3105 76.4% 74.9%-77.9%
+    22-12-2021 12,300 91 1049 1330 78.9% 76.6%-81%
+    23-12-2021 13298 63 2629 3313 79.4% 77.9%-80.7%
+    24-12-2021 7,427 64 511 610 83.8% 80.6%-86.6%
+    25-12-2021 8265 94 691 877 78.8% 75.9%-81.5%
+    26-12-2021 11,569 94 1913 2209 86.6% 85.1%-88%
+    27-12-2021 24018 129 4061 4550 89.3% 88.3%-90.1%
+    28-12-2021 23,326 86 1343 1490 90.1% 88.5%-91.6%
+    29-12-2021 18376 86 372 403 92.3% 89.3%-94.7%
+    30-12-2021 20,474 71 856 945 90.6% 88.5%-92.4%
+    31-12-2021 10288 63 396 431 91.9% 88.9%-94.3%
+    01-01-2022 9,219 72 386 409 94.4% 91.7%-96.4%
     """
     data_dk = data_dk.replace(',', '').replace('%', '')
     records = [x.split()[:7] for x in data_dk.splitlines() if '-202' in x]
@@ -122,26 +141,29 @@ def get_data_dk(plot=True, fig_ax=None):
 def get_data_ams_nl():
     """Return DataFrame.
 
-    Source: https://twitter.com/ARGOSamsterdam
+    Daily source: https://twitter.com/ARGOSamsterdam
+    Weekly and older data:
+        https://www.rivm.nl/coronavirus-covid-19/virus/varianten/omikronvariant
 
 
+    Omicron assay - spike 371L/373P assay detects BA.1 and BA.2
     """
-    # old: Source: https://twitter.com/JosetteSchoenma/status/1471536542757883918
-    txt_old = """\
-        2021-12-06 2.5
-        2021-12-13 14
-        2021-12-14 25
-        """
 
     txt = """\
-        2021-12-12 100 4
-        2021-12-13 100 11
-        2021-12-14 100 14
-        2021-12-15 100 25
-        2021-12-16 100 18.5
-        2021-12-17 100 21
-        2021-12-18 100 35.5
-        2021-12-19 100 35
+        2021-12-02 200 1
+        2021-12-05 170 2
+        2021-12-06 189 5
+        2021-12-07 190 4
+        2021-12-08 189 6
+        2021-12-09 191 6
+        2021-12-12 189 7
+        2021-12-13 188 22
+        2021-12-14 192 27
+        2021-12-15 189 47
+        2021-12-16 189 33
+        2021-12-17 60 13
+        2021-12-18 51 18
+        2021-12-19 94 33
         2021-12-20 95 46
         2021-12-21 106 63
         2021-12-22 89 56
@@ -151,7 +173,12 @@ def get_data_ams_nl():
         2021-12-28 92 74
         2021-12-29 87 73
         2021-12-30 87 71
-        """
+        2022-01-02 76 69
+        2022-01-03 88 84
+        2022-01-04 94 90
+        2022-01-05 72 71
+        2022-01-06 86 83
+                """
     records = [li.split() for li in txt.splitlines() if '202' in li]
     df = pd.DataFrame.from_records(records, columns=['sdate', 'ntest', 'npos'])
     for c in 'ntest', 'npos':
@@ -168,6 +195,7 @@ def _get_data_synsal(txt, date_shift=0):
 
     txt = re.sub(r'[ \t]+', ' ', txt).replace('%', '').replace(',', '.')
     txt = re.sub(r'(\d+)-dec', r'2021-12-\1', txt)
+    txt = re.sub(r'(\d+)-jan', r'2022-01-\1', txt)
     records = [li.split() for li in txt.splitlines() if '202' in li]
     df = pd.DataFrame.from_records(records, columns=['sdate', 'ntest', 'npos', 'pos%'])
     for c in 'ntest', 'npos', 'pos%':
@@ -180,7 +208,11 @@ def _get_data_synsal(txt, date_shift=0):
 
 
 def get_data_synlab():
-    """Source: https://www.rivm.nl/coronavirus-covid-19/virus/varianten/omikronvariant"""
+    """Source: https://www.rivm.nl/coronavirus-covid-19/virus/varianten/omikronvariant
+
+    SGTF: BA.1 only
+    https://twitter.com/JosetteSchoenma/status/1479458074435936258
+    """
 
     txt="""\
     1-dec 	2622 	  	1 	0.0%
@@ -207,19 +239,28 @@ def get_data_synlab():
     22-dec 	1607 	  	408 	25,4%
     23-dec 	1809 	  	517 	28,6%
     24-dec 	1875 	  	605 	32,3%
-    25-dec 	1816 	  	645 	35,5%
-    26-dec 	1807 	  	781 	43,2%
-    27-dec 	1288 	  	574 	44,6%
-    28-dec 	1963 	  	1020 	52,0%
-    29-dec 	1893 	  	1112 	58,7%
-    30-dec 	1923 	  	1267 	65,9%
-    31-dec 	1743 	  	1179 	67,6%
+    25-dec 	1816 	645 	35,5%
+    26-dec 	1807 	781 	43,2%
+    27-dec 	1288 	574 	44,6%
+    28-dec 	1963 	1020 	52,0%
+    29-dec 	1893 	1112 	58,7%
+    30-dec 	1923 	1267 	65,9%
+    31-dec 	3282 	2219 	67,6%
+    1-jan 	1586 	1122 	70,7%
+    2-jan 	1917 	1462 	76,3%
+    3-jan 	2823 	2296 	81,3%
+    4-jan 	3895 	3410 	87,5%
+    5-jan 	2722 	2431 	89,3%
     """
     return _get_data_synsal(txt, -2)
 
 
 def get_data_saltro():
-    """Source: https://www.rivm.nl/coronavirus-covid-19/virus/varianten/omikronvariant"""
+    """Source: https://www.rivm.nl/coronavirus-covid-19/virus/varianten/omikronvariant
+
+    SGTF: BA.1 only
+    https://twitter.com/JosetteSchoenma/status/1479458074435936258
+    """
 
     txt="""\
     1-dec 	885 	0 	0.0%
@@ -252,7 +293,11 @@ def get_data_saltro():
     28-dec 	1430 	800 	55,9%
     29-dec 	1318 	792 	60,1%
     30-dec 	1481 	939 	63,4%
-    31-dec 	451 	292 	64,7%
+    31-dec 	1695 	1139 	67,2%
+    1-jan 	1445 	1054 	72,9%
+    2-jan 	1981 	1544 	77,9%
+    3-jan 	1684 	1389 	82,5%
+    4-jan 	2122 	1842 	86,8%
     """
     return _get_data_synsal(txt, -2)
 
@@ -263,10 +308,11 @@ def get_data_nl():
     """
 
     txt = """\
-        2021-11-25 1874 4
-        2021-12-02 1864 8
-        2021-12-09 1753 21
-        2021-12-16 1004 88
+        2021-11-25 1927 4
+        2021-12-02 1892 9
+        2021-12-09 1876 27
+        2021-12-16 1827 164
+        2021-12-23 1293 363
         """
     records = [li.split() for li in txt.splitlines() if '202' in li]
     df = pd.DataFrame.from_records(records, columns=['sdate', 'ntest', 'npos'])
@@ -283,9 +329,9 @@ def get_data_all():
     """Return dict with name -> dataframe"""
     dfdict = {
         'Denmark': get_data_dk(),
-        'Amsterdam': get_data_ams_nl(),
-        'Synlab': get_data_synlab(),
-        'Saltro': get_data_saltro(),
+        'Amsterdam Omicron/Delta': get_data_ams_nl(),
+        'Synlab BA.1/(BA.2+δ)': get_data_synlab(),
+        'Saltro BA.1/(BA.2+δ)': get_data_saltro(),
         'Nederland': get_data_nl(),
         }
     return dfdict
@@ -300,10 +346,10 @@ def plot_omicron_delta_odds(dfdict, fig_ax=None):
         fig, ax = fig_ax
 
     ax.set_yscale('log')
-    ax.set_ylabel(r'Odds ratio omicron/other')
+    ax.set_ylabel(r'Odds ratio')
     ax.set_xlabel('Sampling date')
     pcycle = plt.rcParams['axes.prop_cycle']()
-
+    halfday = pd.Timedelta('12 h')
     markers = 'xo<>'*3
 
     for i, (region_name, df) in enumerate(dfdict.items()):
@@ -311,16 +357,17 @@ def plot_omicron_delta_odds(dfdict, fig_ax=None):
         x_offs = pd.Timedelta((i % 3 - 1)*0.05, 'd')
         ga1 = df['ga1'].iloc[-1]
         props = next(pcycle)
-        label = f'{region_name} (k={ga1:.2f} per day)'
+        label = f'{region_name} (k={ga1:.2f} d$^{{-1}}$)'
+
         yerr = 2*df['or_std']
 
         # big y error bars look ugly on log scale...
         yerr_big_mask = yerr >= df['or']
         yerr[yerr_big_mask] = df['or'][yerr_big_mask]*0.75
 
-        ax.errorbar(df.index+x_offs, df['or'], yerr=yerr, ls='none', marker=marker,
+        ax.errorbar(df.index+x_offs+halfday, df['or'], yerr=yerr, ls='none', marker=marker,
                     label=label, **props)
-        ax.plot(df.index, df['or_fit'],
+        ax.plot(df.index+halfday, df['or_fit'],
                 **props)
 
 
@@ -367,7 +414,7 @@ def estimate_cases_nd_no(n_cases, gf7, f_o, ga1):
 
 
 def run_scenario(date_ref, *, odds_ref, kga, cf=1.04, regions=None,
-                 dayrange=(-21, 14), kgachange=None):
+                 dayrange=(-21, 14), kgachange=None, kdchange=None):
     """Run scenario with plot.
 
     Parameters:
@@ -381,6 +428,7 @@ def run_scenario(date_ref, *, odds_ref, kga, cf=1.04, regions=None,
     - dayrange: range relative to reference date to simulate.
     - kgachange: optional (dayno, kga2) for a change in kga.
       (dayno > 0).
+    - kdchange: optional (dayno, k_delta) for a change in k_delta.
     """
 
     dfdict = get_data_all()
@@ -389,21 +437,14 @@ def run_scenario(date_ref, *, odds_ref, kga, cf=1.04, regions=None,
 
     fig, axs = plt.subplots(2, 1, figsize=(9, 7), tight_layout=True, sharex=True)
 
-    # odds-ratio plot.
+    ### Odds-ratio plot
     ax = axs[0]
-
     plot_omicron_delta_odds(dfdict, fig_ax=(fig, axs[0]))
-
-    ax.set_ylim(1e-4, 110)
+    ax.set_ylim(1e-4, 150)
     ax.set_xlabel(None)
     ax.set_title('Verhouding Omicron/Delta Denemarken en Nederland')
 
-    # Here are the model parameters
-    # ref date based on sampling date
-    # GGD test date 2021-12-28: 13800, 2021-12-21: 11800
-    # (smoothed values)
-    # Add 4% for non-GGD data sources
-    # Omikron on test date 2021-12-28: ratio 1.7
+    ### Model calculation
     df_ggd = ggd_R.load_ggd_pos_tests()  # index at date_tested
     df_ggd.index -= pd.Timedelta('12 h')  # make sure that index is at 0:00:00.
     df_ggd.loc[df_ggd.index[-2:], 'n_pos_7'] = np.nan  # these are extrapolated values
@@ -433,47 +474,71 @@ def run_scenario(date_ref, *, odds_ref, kga, cf=1.04, regions=None,
         m = len(daynos) - i0
         k2_o = k_d + kga2
         ncs_o[i0:] = ncs_o[i0]*np.exp(np.arange(m)*k2_o)  # may be off-by-one error
-        R2_om = np.exp(k2_o * Tgen)
 
+    if kdchange is not None:
+        dn_change, kd2 = kdchange
+        i0 = np.argmax(daynos == dn_change)
+        m = len(daynos) - i0
+        f = np.exp(np.arange(m) * (kd2 - k_d))
+        ncs_o[i0:] *= f
+        ncs_d[i0:] *= f
+
+    ### Add model result to OR plot
+    halfday = pd.Timedelta('12 h')
     ax.plot(
-        dates, ncs_o/ncs_d,
+        dates + halfday, ncs_o/ncs_d,
         label=f'Nederland (model: k={kga:.2f})',
         ls='--',
         color=PLT_COLORS[len(dfdict)]
         )
-
     ax.legend()
 
-    #for ax in axs:
-    #    ax.set_xlim(*dates[[0, -1]])
+    ### Cases plot
     ax = axs[1]
     i0 = 7 # skip old NL data on delta
-    ax.plot(dates[i0:], (ncs_d+ncs_o)[i0:], label='Totaal')
+    ax.plot(dates[i0:]+halfday, (ncs_d+ncs_o)[i0:], label='Totaal')
+
+    # cases: reference points
     ax.scatter(
-        [date_ref-pd.Timedelta('7 d'), date_ref],
+        [date_ref-pd.Timedelta('7 d')+halfday, date_ref+halfday],
         [ncases_prev, ncases_ref],
-        label='IJkpunnten'
+        label='IJkpunten'
         )
-    ax.plot(dates[i0:], ncs_d[i0:], label=f'Delta (R={R_delta:.2f})', ls='-.')
 
-    if kgachange is None:
-        label = f'Omicron (R={R_om:.2f})'
+    perday = 'd$^{-1}$'
+    if kgachange is None and kdchange is None:
+        label_o = f'Omicron (R={R_om:.2f}, ko={k_o:.2f} {perday})'
+        label_d = f'Delta (R={R_delta:.2f}, kd={k_d:.2f} {perday})'
     else:
-        label = f'Omicron (R={R_om:.2f} → {R2_om:.2f}'
-    ax.plot(dates, ncs_o, label=label, ls=':')
+        label_o = f'Omicron (start R={R_om:.2f}, ko={k_o:.2f} {perday})'
+        label_d = f'Delta (start R={R_delta:.2f}, kd={k_d:.2f} {perday})'
+    ax.plot(dates[i0:]+halfday, ncs_d[i0:], label=label_d, ls='-.')
+    ax.plot(dates+halfday, ncs_o, label=label_o, ls=':')
 
-
-    # add ggd data
+    # cases: add ggd data
     ax.set_xlim(*ax.get_xlim())
     select = (
         (df_ggd.index > dates[0]) & (df_ggd.index <= dates[-1])
         )
     ax.plot(
-        df_ggd.index[select], df_ggd.loc[select, 'n_pos_7']*cf,
+        df_ggd.index[select]+halfday, df_ggd.loc[select, 'n_pos_7']*cf,
         label=f'GGD positief x {cf}, 7d-gemiddelde',
         linestyle='--'
         )
+    # cases: label changes
+    if kdchange is not None:
+        i0 = np.argmax(daynos == kdchange[0])
+        label=rf'$k_{{delta}}$ → {kdchange[1]:.2f}'
+        ax.scatter([dates[i0]+halfday], [ncs_d[i0]], color=PLT_COLORS[1])
+        ax.text(dates[i0]+halfday, ncs_d[i0], label, va='bottom')
+    if kgachange is not None:
+        i0 = np.argmax(daynos == kgachange[0])
+        label=rf'k → {kgachange[1]:.2f}'
+        ax.scatter([dates[i0]+halfday], [ncs_o[i0]], color=PLT_COLORS[2])
+        ax.text(dates[i0]+halfday, ncs_o[i0], label, va='top')
 
+
+    # cases: plot tweaks
     ax.set_ylim(1000, 1e5)
     ax.legend()
     ax.set_yscale('log')
@@ -485,7 +550,7 @@ def run_scenario(date_ref, *, odds_ref, kga, cf=1.04, regions=None,
 
     ax.grid(axis='y', which='minor')
     tools.set_xaxis_dateformat(ax)
-
+    plt.pause(0.25)
 
 
 if __name__ == '__main__':
@@ -496,12 +561,17 @@ if __name__ == '__main__':
         ax = plt.gcf().get_axes()[0]
         ax.set_ylim(None, 20)
         ax.set_xlim(None, pd.to_datetime('2022-01-05'))
-        ax.set_title('Omicron/Delta ratios - data source SSI, Argos, RIVM - plot @hk_nien')
+        ax.set_title('Omicron/Other ratios - data source SSI, Argos, RIVM - plot @hk_nien')
         ax.legend(loc='lower right')
 
     plt.close('all')
 
     run_scenario('2021-12-28', odds_ref=1.7, kga=0.2)
-    run_scenario('2021-12-28', odds_ref=1.7, kga=0.23, kgachange=(4, 0.10))
+    # run_scenario('2021-12-28', odds_ref=1.7, kga=0.23, kgachange=(4, 0.10))
+    run_scenario(
+        '2021-12-28', odds_ref=1.7, dayrange=(-21, 21), kga=0.20,
+        kgachange=(9, 0.23),
+        kdchange=(9, -0.15)
+        )
 
 
