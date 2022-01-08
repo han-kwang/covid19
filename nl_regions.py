@@ -16,6 +16,14 @@ Note: changes as of 2021-01-07:
     'Boxtel', 'Vught', 'Tilburg': expanded
     'Eemsdelta', merger of  'Appingedam', 'Delfzijl', 'Loppersum',
     'Hengelo' renamed to 'Hengelo (O.)' (we undo this)
+
+Changes as of 2022-01-01
+
+    Uden, Landerd -> Maashorst
+    Boxmeer, Cuijk, Grave, Mill en Sint Hubert, Sint Anthonis -> Land van Cuijk
+    Heerhugowaard, Langedijk -> Dijk en Waard
+    Beemster, Purmerend -> Purmerend
+
 """
 from pathlib import Path
 import re
@@ -51,15 +59,38 @@ def build_municipality_csv(df_cases):
     mun_provs = df_cases.groupby('Municipality_name').first()[['Province']]
     df_mun['Province'] = mun_provs['Province']
 
-    new_row = dict(
-        Municipality='Eemsdelta',
-        Population=df_mun.loc[['Appingedam', 'Delfzijl', 'Loppersum'], 'Population'].sum(),
-        Province='Groningen',
-        )
+    new_rows = [
+        # 2021-01
+        dict(
+            Municipality='Eemsdelta',
+            Population=df_mun.loc[['Appingedam', 'Delfzijl', 'Loppersum'], 'Population'].sum(),
+            Province='Groningen'
+            ),
+        # 2022-01
+        dict(
+            Municipality='Maashorst',
+            Population=df_mun.loc[['Uden', 'Landerd'], 'Population'].sum(),
+            Province='Noord-Brabant'
+            ),
+        dict(
+            Municipality='Land van Cuijk',
+            Population=df_mun.loc[['Boxmeer', 'Cuijk', 'Grave', 'Mill en Sint Hubert'], 'Population'].sum(),
+            Province='Noord-Brabant'
+            ),
+        dict(
+            Municipality='Dijk en Waard',
+            Population=df_mun.loc[['Heerhugowaard', 'Langedijk'], 'Population'].sum(),
+            Province='Noord-Holland'
+            ),
+        ]
 
     df_mun = df_mun.append(
-        pd.DataFrame.from_records([new_row]).set_index('Municipality')
+        pd.DataFrame.from_records(new_rows).set_index('Municipality')
         )
+
+    # Merger 2022-01
+    df_mun.loc['Purmerend', 'Population'] += df_mun.loc['Beemster', 'Population']
+
     _add_holiday_regions(df_mun)
 
     fpath = DATA_PATH / 'municipalities.csv'
