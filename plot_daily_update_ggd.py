@@ -20,11 +20,6 @@ import os
 import tools
 
 
-# def download_ggd_tests(force=False):
-
-
-
-
 # #%% R graph for daily Twitter update
 if __name__ == '__main__':
 
@@ -39,9 +34,9 @@ if __name__ == '__main__':
     # ggd_tests.plot_daily_tests_and_delays('2021-09-01', src_col='n_pos')
     plt.pause(0.25)
     print('--R calculation--')
-    ggd_R.plot_rivm_and_ggd_positives(140, yscale=('log', 1000, 30000))
+    ggd_R.plot_rivm_and_ggd_positives(120, yscale=('log', 1000, 40000))
     plt.pause(0.25)
-    ggd_R.plot_R_graph_multiple_methods(num_days=100, ylim=(0.5, 1.8))
+    ggd_R.plot_R_graph_multiple_methods(num_days=100, ylim=(0.5, 2))
     plt.gcf().get_axes()[0].legend(loc='upper left')
     plt.pause(0.25)
     nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)

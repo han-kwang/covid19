@@ -65,14 +65,7 @@ def load_ggd_pos_tests(lastday=-1, pattern_weeks=2, Tgen=4.0):
     Days with known bad data will have NaN.
     """
     df = ggd_data.load_ggd_pos_tests(lastday)
-    # Handle 7-day effects to estimate last 3 days.
-    df['n_pos_7'] = df['n_pos'].rolling(7, center=True).mean()
-    nrows = len(df)
-    for i0 in range(nrows-3, nrows):
-        ii = np.arange(i0-7*pattern_weeks, i0, 7)
-        idxs = df.index[ii]
-        ratio = (df.loc[idxs, 'n_pos_7']/df.loc[idxs, 'n_pos']).mean()
-        df.loc[df.index[i0], 'n_pos_7'] = df.loc[df.index[i0], 'n_pos']*ratio
+    df['n_pos_7'] = nlcs.get_rolling7_with_est3(df['n_pos'], 3, m=2)
 
     # Shift dates to mid-day
     df.index = df.index + pd.Timedelta(12, 'h')
@@ -117,6 +110,24 @@ def add_dataset(ax, Rs, delay_days, label, marker, color, err_fan=(7, 0.15)):
         ax.fill_between(Rs.index[-n:] - delay, Rsmooth1-fan, Rsmooth1+fan,
                         color=color, alpha=0.2)
 
+
+def _plot_steps_and_smooth(ax, dates, daydata, r7data, label, color):
+    """Plot steps and rolling-7 data. Dates should be at mid-day."""
+    ax.step(
+        dates + pd.Timedelta('12 h'),
+        daydata,
+        where='pre', color=color, alpha=0.6, label=label
+        )
+    ax.plot(
+        dates[:-3], r7data.iloc[:-3],
+        color=color, alpha=0.8, linestyle='-'
+        )
+    ax.plot(
+        dates[-4:], r7data.iloc[-4:],
+        color=color, alpha=0.8, linestyle=(2, (1.5, 0.7))
+        )
+
+
 def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=None,
                                 yscale=('log', 300, 25000)):
     """Plot RIVM daily cases and GGD positive tests together in one graph.
@@ -138,27 +149,26 @@ def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=None,
 
     corr = ' schatting datastoring' if correct_anomalies else ''
 
-    fig, ax = plt.subplots(figsize=(10, 4), tight_layout=True)
+    fig, ax = plt.subplots(figsize=(9, 4), tight_layout=True)
     ax.set_title('Positieve tests per dag')
-    # df_mun timestamps daily at 10:00
-    col = '#0044cc'
-    ax.step(df_mun.index + pd.Timedelta('14 h'), df_mun['Delta']*population,
-            where='pre', color=col,
-            label=f'RIVM meldingen (gemeentes){corr}'
-            )
-    ax.plot(df_mun.index + pd.Timedelta('14 h'), df_mun['Delta7r']*population,
-            color=col, linestyle='-', alpha=0.4
-            )
-    # df_ggd timestamps daily at 12:00
-    col = '#cc0000'
-    ax.step(df_ggd.index + pd.Timedelta('2.5 d'), df_ggd['n_pos'],
-            where='pre', alpha=0.6, color=col,
-            label='GGD pos. tests (datum monstername + 2)'
-            )
-    ax.plot(df_ggd.index + pd.Timedelta('2.5 d'), df_ggd['n_pos_7'],
-            alpha=0.4, color=col, linestyle='-'
-            )
 
+
+    _plot_steps_and_smooth(
+        ax,
+        df_mun.index+pd.Timedelta('2 h'),  # df_mun timestamps daily at 10:00
+        df_mun['Delta']*population,
+        df_mun['Delta7r']*population,
+        label=f'RIVM meldingen (gemeentes){corr}',
+        color='#0044cc'
+        )
+    _plot_steps_and_smooth(
+        ax,
+        df_ggd.index + pd.Timedelta('2 d'),  # index timestamps daily at 12:00
+        df_ggd['n_pos'],
+        df_ggd['n_pos_7'],
+        label='GGD pos. tests (datum monstername + 2)',
+        color='#cc0000'
+        )
     ax.set_yscale(yscale[0])
     ax.set_ylim(*yscale[1:])
     dfa = nlcs.DFS['anomalies'].copy()  # index: date 10:00, columns ..., days_back
@@ -173,23 +183,22 @@ def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=None,
     # show corrected values
     mask_anom = df_mun['Delta'] != df_mun_c['Delta']
     ax.scatter(
-        df_mun.index[mask_anom],
+        df_mun.index[mask_anom]+pd.Timedelta('2 h'),
         df_mun_c.loc[mask_anom, 'Delta']*population,
-        s=20, marker='x', color='#004488',
+        s=20, marker='x', alpha=0.8, color='#004488', zorder=10,
         label='RIVM schattingen i.v.m. datastoring',
         )
 
-
-    # ax.scatter(
-    #     mun_idxs + pd.Timedelta('2 h'),
-    #     df_mun.loc[mun_idxs, 'Delta']*population,
-    #     label='Datastoringen', marker='o', s=20,
-    #     )
-    #for tm in mun_idxs + pd.Timedelta('2 h'):
-    #    ax.axvline(tm, color='#4466aa', linestyle='--', alpha=0.3)
-
     ax.legend()
-    ax.set_xlim(df_ggd.index[-num_days], df_ggd.index[-1] + pd.Timedelta(4, 'd'))
+    date_range = (df_ggd.index[-num_days], df_ggd.index[-1] + pd.Timedelta(4, 'd'))
+    ax.set_xlim(date_range[0], date_range[1])
+
+    nlcs._add_event_labels(
+        ax,
+        date_range[0], date_range[1],
+        with_ribbons=False,
+        flagmatch='CaseGraph'
+        )
     tools.set_xaxis_dateformat(ax)
     ax.grid(axis='y', which='minor')
     if yscale[0] == 'log':

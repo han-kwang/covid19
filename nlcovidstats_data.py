@@ -382,7 +382,10 @@ def init_data(autoupdate=True, Rt_source='rivm'):
     - Rt_source: 'rivm' or 'coronawatchnl' (where to download Rt data).
     """
     if autoupdate:
-        tools.wait_for_refresh('15:14:55', '15:15:20')
+        tools.wait_for_refresh(
+            '15:14:50', '15:15:20',
+            'init_data: waiting until {t2}.'
+            )
 
     DFS['cases'] = df = load_cumulative_cases(autoupdate=autoupdate)
     DFS['mun'] = nl_regions.get_municipality_data()

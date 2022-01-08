@@ -56,7 +56,9 @@ DELAY_INF2REP = [
     ('2021-11-20', 5),
     ('2021-11-25', 5),
     ('2021-12-04', 4.5), # test capacity increased
-    ('2021-12-08', 4), # Speculation...
+    ('2021-12-08', 4),
+    ('2022-01-04', 4),
+    ('2022-01-08', 4.5), # speculation
     ]
 
 
@@ -164,6 +166,54 @@ def get_dow_correction(dayrange=(-50, -1), verbose=False):
     return factor_by_dow
 
 
+def get_rolling7_with_est3(y, pattern_weeks, m=3):
+    """Create rolling 7-d average with last three days estimated.
+
+    Parameters:
+
+    - y: 1D array or Series with values (1 per day).
+    - pattern_weeks: how many previous weeks to estimate weekday patterns.
+    - m: how many days to estimate initial derivative.
+
+    Return:
+
+    - y7: centered rolling-7 average, last 3 days estimated, as array.
+    """
+    # Rolling average
+    ker = np.full(7, 1/7)
+    y = np.array(y)
+    n, = y.shape
+    y7 = np.convolve(y, ker, mode='same')
+    y7[:3] = y7[-3:] = np.nan
+
+    # DoW correction on last 3 days
+    n = len(y)
+    for i0 in range(n-3, n):
+        ii = np.arange(i0-7*pattern_weeks, i0, 7)
+        ratio = (y7[ii]/y[ii]).mean()
+        y7[i0] = y[i0]*ratio
+
+    # get slope a1 of last days
+    assert m > 0
+    a0 = y7[-4]
+    a1 = (y7[-4] - y7[-4-m]) / m
+
+    # last four points are y0 .. y3 for x=0, .., 3
+    # fit a polynomial a0 + a1*x + a2*x**2.
+    yy = y7[-3:]
+    xx = np.arange(1, 4)
+    a2, _, _, _  = np.linalg.lstsq(
+        (xx**2)[:, np.newaxis],
+        yy - a0 - a1*xx,
+        rcond=None
+        )
+
+    y7[-3:] = a0 + a1*xx + a2*xx**2
+    y7[:3] = y7[3] # just pad on the left
+
+    return y7
+
+
 def get_region_data(region, lastday=-1, printrows=0, correct_anomalies=True,
                     correct_dow='r7'):
     """Get case counts and population for one municipality.
@@ -177,7 +227,7 @@ def get_region_data(region, lastday=-1, printrows=0, correct_anomalies=True,
     - printrows: print this many of the most recent rows
     - correct_anomalies: correct known anomalies (hiccups in reporting)
       by reassigning cases to earlier dates.
-    - correct_dow: None, 'r7' (only for extrapolated rolling-7 average)
+    - correct_dow: ignored, for backward compatibility.
 
     Special municipalities:
 
@@ -224,30 +274,8 @@ def get_region_data(region, lastday=-1, printrows=0, correct_anomalies=True,
     if correct_anomalies:
         _correct_delta_anomalies(df1)
         nc = df1['Delta'] * npop
-
-
-
-    nc7 = nc.rolling(7, center=True).mean()
-    nc7[np.abs(nc7) < 1e-10] = 0.0 # otherwise +/-1e-15 issues.
-    nc7a = nc7.to_numpy()
-
-    # last 3 elements are NaN, use mean of last 4 raw (dow-corrected) to
-    # get an estimated trend and use exponential growth or decay
-    # for filling the data.
-    if correct_dow == 'r7':
-        # mean number at t=-1.5 days
-        dow_correction = get_dow_correction((lastday-49, lastday))  # (7,) array
-        df1['Delta_dowc'] = df1['Delta'] * dow_correction[df1.index.dayofweek]
-        nc1 = np.mean(nc.iloc[-4:] * dow_correction[nc.index[-4:].dayofweek])
-    else:
-        nc1 = nc.iloc[-4:].mean() # mean number at t=-1.5 days
-
-    log_slope = (np.log(nc1) - np.log(nc7a[-4]))/1.5
-    nc7.iloc[-3:] = nc7a[-4] * np.exp(np.arange(1, 4)*log_slope)
-
-    # 1st 3 elements are NaN
-    nc7.iloc[:3] = np.linspace(0, nc7.iloc[3], 3, endpoint=False)
-
+    print('here') # FIXME
+    nc7 = get_rolling7_with_est3(nc, 3, 3)
     df1['Delta7r'] = nc7/npop
     df1['DeltaSG'] = scipy.signal.savgol_filter(
         nc/npop, 15, 2, mode='interp')
