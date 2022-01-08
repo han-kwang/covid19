@@ -60,5 +60,6 @@ Date_report,fraction,days_back,reference
 2021-12-02,0.08,-1
 # RIVM data page: Deze storing heeft als gevolg dat de cijfers van vandaag nameldingen bevatten,
 2021-12-29,0.07,-1
-
+# RIVM data page 6 Jan, 7 Jan
+2022-01-07,0.05,-1
 # EOF
