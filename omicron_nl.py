@@ -43,10 +43,10 @@ def add_or_stats(df):
     s_nneg[s_nneg == 0] = 0.5
 
     odds = s_npos/s_nneg
-    or_var= s_ntot * s_npos / s_nneg**3
+    or_var= s_npos / (s_nneg * s_ntot) * (1 + (s_npos/s_nneg)**2)
 
     # tweak to get nonzero errors for npos~0 and nneg~0
-    or_var += (0.5/s_ntot)**2 + (0.5*odds/s_nneg)**2
+    or_var += (0.5/s_ntot)**2
 
     df['or'] = odds
     df['or_std'] = np.sqrt(or_var)  # standard error
@@ -337,6 +337,33 @@ def get_data_all():
     return dfdict
 
 
+def get_yerrbars(df):
+    """Return yerr2 (2, n) array with 2sigma y errorbars.
+
+    Parameters:
+
+    - df: DataFrame with 'or' and 'or_std' columns.
+
+    Return:
+
+    - yerr2: (2, n) errorbar array.
+
+    For odds ratio > 1, upper and lower y errors are adjusted so that they
+    will show up nicely on a log scale.
+    """
+    yerr = 2*df['or_std']
+    yerr2 = yerr.values * np.ones((2, 1))
+    orvals = df['or'].values
+    mask = (orvals > 1)
+    ey_ratio = yerr[mask] / orvals[mask]
+    yerr2[0, mask] = yerr[mask] / (1 + ey_ratio)
+    yerr2[1, mask] = yerr[mask] / (1 - np.where(ey_ratio < 0.75, ey_ratio, 0.75))
+    # big y error bars look ugly on log scale...
+    mask = yerr2[0, :] >= orvals
+    yerr2[0, mask] = orvals[mask] * 0.75
+    return yerr2
+
+
 def plot_omicron_delta_odds(dfdict, fig_ax=None):
     """Plot from dict region_name -> dataframe with (or, or_std, or_fit)."""
 
@@ -358,14 +385,8 @@ def plot_omicron_delta_odds(dfdict, fig_ax=None):
         ga1 = df['ga1'].iloc[-1]
         props = next(pcycle)
         label = f'{region_name} (k={ga1:.2f} d$^{{-1}}$)'
-
-        yerr = 2*df['or_std']
-
-        # big y error bars look ugly on log scale...
-        yerr_big_mask = yerr >= df['or']
-        yerr[yerr_big_mask] = df['or'][yerr_big_mask]*0.75
-
-        ax.errorbar(df.index+x_offs+halfday, df['or'], yerr=yerr, ls='none', marker=marker,
+        yerr2 = get_yerrbars(df)
+        ax.errorbar(df.index+x_offs+halfday, df['or'], yerr=yerr2, ls='none', marker=marker,
                     label=label, **props)
         ax.plot(df.index+halfday, df['or_fit'],
                 **props)
@@ -556,6 +577,10 @@ def run_scenario(date_ref, *, odds_ref, kga, cf=1.04, regions=None,
 if __name__ == '__main__':
     plt.close('all')
     dfdict = get_data_all()
+
+    if 0:
+        plot_omicron_delta_odds(dfdict)
+
     if 0:
         plot_omicron_delta_odds(dfdict)
         ax = plt.gcf().get_axes()[0]
@@ -564,14 +589,14 @@ if __name__ == '__main__':
         ax.set_title('Omicron/Other ratios - data source SSI, Argos, RIVM - plot @hk_nien')
         ax.legend(loc='lower right')
 
-    plt.close('all')
+    if 1:
 
-    run_scenario('2021-12-28', odds_ref=1.7, kga=0.2)
-    # run_scenario('2021-12-28', odds_ref=1.7, kga=0.23, kgachange=(4, 0.10))
-    run_scenario(
-        '2021-12-28', odds_ref=1.7, dayrange=(-21, 21), kga=0.20,
-        kgachange=(9, 0.23),
-        kdchange=(9, -0.15)
-        )
+        run_scenario('2021-12-28', odds_ref=1.7, kga=0.2)
+        # run_scenario('2021-12-28', odds_ref=1.7, kga=0.23, kgachange=(4, 0.10))
+        run_scenario(
+            '2021-12-28', odds_ref=1.7, dayrange=(-21, 21), kga=0.20,
+            kgachange=(9, 0.23),
+            kdchange=(9, -0.15)
+            )
 
 
