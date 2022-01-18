@@ -378,9 +378,11 @@ def construct_Dfunc(delays, plot=False):
 
     if plot:
         fig, ax = plt.subplots(1, 1, figsize=(7, 3), tight_layout=True)
-        tsx = np.linspace(
+        tomorrow = pd.Timestamp('now') + pd.Timedelta('1 d')
+        tsx = np.arange(
             ts[0],
-            int(pd.to_datetime('now').to_datetime64())
+            np.int64(tomorrow.to_datetime64()),
+            np.int64(1e9*86400)
             )
         ax.plot(pd.to_datetime(tsx.astype(np.int64)), fD(tsx))
         ax.set_ylabel('Vertraging (dagen)')
