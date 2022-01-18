@@ -21,6 +21,7 @@ import time
 import pandas as pd
 import nl_regions
 import tools
+from tools import print_warn
 
 
 try:
@@ -132,8 +133,10 @@ def download_Rt_rivm(force=False):
         try:
             days_to_next = release_dows[last_release_time.dayofweek]
         except KeyError:
-            print(f'Warning: please check {__file__}: download_Rt_Rivm().\n'
-                  'Release schedule seems to have changed.')
+            print_warn(
+                f'Warning: please check {__file__}: download_Rt_Rivm().\n'
+                'Release schedule seems to have changed.'
+                )
             days_to_next = 1
         next_release_time = last_release_time + pd.Timedelta(days_to_next, 'd')
         now_time = pd.Timestamp.now()  # this will be in local time
@@ -207,7 +210,7 @@ def load_rivm_R_updates(dates=None):
     if dates is not None:
         df = df.loc[df.index.isin(dates)]
         if len(df) == 0:
-            print('Warning: load_rivm_R_updates - no date match.')
+            print_warn('Warning: load_rivm_R_updates - no date match.')
     return df
 
 
@@ -281,7 +284,7 @@ def check_RIVM_message():
     if len(htm) > 500:
         htm = f'{htm[:497]}...'
     if re.search('storing|onderraportage|achterstand', htm):
-        print(f'Warning: RIVM data page says:\n{htm}')
+        print_warn(f'Warning: RIVM data page says:\n{htm}')
 
 
 def get_municipalities_by_pop(minpop, maxpop, sort='size'):

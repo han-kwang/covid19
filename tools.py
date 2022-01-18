@@ -139,6 +139,12 @@ def wait_for_refresh(t1='15:14:55', t2='15:15:20', msg='Waiting until {t2}'):
         time.sleep(max(wait_time, 1))
         print('ready!')
 
+def print_warn(*args, **kwargs):
+    """Print warning with color escape code."""
+    print('\033[31;1m', end='')
+    print(*args, **kwargs)
+    print('\033[0m', end='')
+
 if __name__ == '__main__':
 
 

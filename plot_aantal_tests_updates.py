@@ -7,7 +7,9 @@ Created on Tue Jul 13 21:46:26 2021
 """
 from pathlib import Path
 from time import time
+from multiprocessing import Pool
 import re
+import sys
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -15,11 +17,29 @@ from tools import set_xaxis_dateformat, set_yaxis_log_minor_labels
 import ggd_data
 
 
+
 # Clone of the github.com/mzelst/covid-19 repo.
 test_path = '../mzelst-covid19-nobackup/data-rivm/tests'
 
 _CACHE = {}  # store slow data here: (date_a, date_b) -> (tm, dataframe)
 #%%
+
+def _get_testdata_1(fdate):
+    """Return dataframe for 1 date, with column renaming.
+
+    Return None if not found (no error).
+    """
+    fdate_str = fdate.strftime('%Y-%m-%d')
+    try:
+        df = ggd_data.load_ggd_pos_tests(fdate_str, quiet=True)
+    except FileNotFoundError:
+        return None
+    df.reset_index(inplace=True)
+    df.rename(columns={'Date_tested': 'sdate'}, inplace=True)
+    df['fdate'] = fdate
+    return df
+
+
 def load_testdata(min_date='2021-01-01', max_date='2099-01-01'):
     """Return DataFrame. Specify mindate as 'yyyy-mm-dd'.
 
@@ -41,25 +61,39 @@ def load_testdata(min_date='2021-01-01', max_date='2099-01-01'):
 
     # Lead dataframes for all requested dates.
     min_date, max_date = [pd.to_datetime(x) for x in [min_date, max_date]]
+    date_today = pd.Timestamp(pd.Timestamp('now').strftime('%Y-%m-%dT23:59:59'))
+    if max_date > date_today:
+        max_date = date_today
     fdate = min_date
-    dfs = []
+    fdates = []
     while fdate <= max_date:
-        fdate_str = fdate.strftime('%Y-%m-%d')
-        try:
-            df = ggd_data.load_ggd_pos_tests(fdate_str, quiet=True)
-        except FileNotFoundError:
-            break
-        df.reset_index(inplace=True)
-        df.rename(columns={'Date_tested': 'sdate'}, inplace=True)
-        df['fdate'] = fdate
-        dfs.append(df)
+        fdates.append(fdate)
         fdate += pd.Timedelta('1 d')
+
+    if sys.platform != 'linux' or len(fdates) < 5:
+        # Single-threaded
+        dfs = []
+        if len(fdates) > 10:
+            print('Loading GGD data...')
+        for fdate in fdates:
+            df = _get_testdata_1(fdate)
+            if df is None:
+                break
+            dfs.append(df)
+    else:
+        # Multi-threaded
+        with Pool() as p:
+            print(f'Loading GGD data with {p._processes} workers...')
+            dfs = p.map(_get_testdata_1, fdates)
+            for i, df in enumerate(dfs):
+                if df is None:
+                    dfs = dfs[:i]
+                    break
 
     if len(dfs) == 0:
         raise ValueError(f'No data loaded for range {min_date} .. {max_date}.')
     print(f'Loaded {len(dfs)} GGD test files, last one '
           f'{dfs[-1].iloc[0]["fdate"].strftime("%Y-%m-%d")}')
-
 
     df = pd.concat(dfs)
     df = df[['sdate', 'fdate', 'n_tested', 'n_pos']]
