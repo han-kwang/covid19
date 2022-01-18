@@ -58,7 +58,8 @@ DELAY_INF2REP = [
     ('2021-12-04', 4.5), # test capacity increased
     ('2021-12-08', 4),
     ('2022-01-04', 4),
-    ('2022-01-08', 4.5), # speculation
+    ('2022-01-08', 4.3), # speculation
+    ('2022-01-11', 4.3), # speculation
     ]
 
 
@@ -274,7 +275,6 @@ def get_region_data(region, lastday=-1, printrows=0, correct_anomalies=True,
     if correct_anomalies:
         _correct_delta_anomalies(df1)
         nc = df1['Delta'] * npop
-    print('here') # FIXME
     nc7 = get_rolling7_with_est3(nc, 3, 3)
     df1['Delta7r'] = nc7/npop
     df1['DeltaSG'] = scipy.signal.savgol_filter(
@@ -594,9 +594,9 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
     df_events = DFS['events']
     df_mun = DFS['mun']
 
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plt.subplots(figsize=(10, 5))
     fig.subplots_adjust(top=0.945-0.03*(subtitle is not None),
-                        bottom=0.1, left=0.09, right=0.83)
+                        bottom=0.1, left=0.09, right=0.7)
 
 
     if region_list is None:

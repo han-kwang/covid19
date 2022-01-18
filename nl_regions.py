@@ -269,6 +269,9 @@ def select_cases_region(dfc, region):
         mselect = df_mun.loc[mask]
     elif region.startswith('JSON:'):
         muns = json.loads(region[5:])['muns']
+        mismatch = set(muns) - set(df_mun.index)
+        if mismatch:
+            raise KeyError(f'JSON municipality not found: {", ".join(mismatch)}.')
         mselect = df_mun.loc[muns]
     else:
         mselect = df_mun.loc[[region]]

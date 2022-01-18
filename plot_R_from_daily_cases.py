@@ -86,7 +86,6 @@ if __name__ == '__main__':
 
     # plt.close('all')
     # nlcs.plot_daily_trends(45, region_list=city_list)
-
     # nlcs.plot_daily_trends(45, region_list=province_list)
     tools.pause_commandline()
     #%%
@@ -125,8 +124,15 @@ json_high = json.dumps(dict(
         'Nijmegen', 'Uden', 'Stadskanaal'],
     label='Drukke teststraten'
     ))
+json_low = json.dumps(dict(
+    muns=[
+        'Zwolle', 'Roermond', 'Apeldoorn', 'Maastricht', 'Hengelo',
+        'Leeuwarden', 'Lelystad', 'Hoogeveen', 'Meppel'],
+    label='Rustige teststraten'
+    ))
+
 nlcs.plot_daily_trends(
-    120,  region_list=['Nederland', f'JSON:{json_high}']
+    120,  region_list=['Nederland', f'JSON:{json_high}', f'JSON:{json_low}']
     )
 
 
