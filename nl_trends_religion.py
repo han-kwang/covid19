@@ -252,7 +252,7 @@ def plot_hhsize_relig_cases(ref_date='now', pop_range=(0, 60e3)):
 
     title = f'Covidgevallen per 100k per week t/m {date_end.strftime("%Y-%m-%d")}'
     ax.set_title(f'{title}\nGemeentes met {pop_range[0]/1e3:.0f}k-{pop_range[1]/1e3:.0f}k inwoners.')
-    fig.canvas.set_window_title(title)
+    fig.canvas.manager.set_window_title(title)
 
     df_renamed = dfm_wc[['HHsize', 'Maandelijks%', 'WeeklyPer100k']].copy()
     df_renamed.rename(columns={'HHsize': 'HHgrootte',

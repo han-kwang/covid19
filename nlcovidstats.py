@@ -154,7 +154,7 @@ def get_dow_correction(dayrange=(-50, -1), verbose=False):
 
         title = 'Day-of-week correction on daily cases'
         ax.set_title(title)
-        fig.canvas.set_window_title(title)
+        fig.canvas.manager.set_window_title(title)
         fig.show()
 
     if rms_dc > 0.8*rms_d:
@@ -386,7 +386,7 @@ def construct_Dfunc(delays, plot=False):
         ax.set_ylabel('Vertraging (dagen)')
         tools.set_xaxis_dateformat(ax, 'Rapportagedatum')
         title = 'Vertraging = t_rapportage - t_infectie - t_generatie/2'
-        fig.canvas.set_window_title(title)
+        fig.canvas.manager.set_window_title(title)
         ax.set_title(title)
         fig.show()
 
@@ -431,7 +431,7 @@ def estimate_Rt_df(r, delay='DEFAULT', Tc=4.0):
 
         # note: timestamps in nanoseconds since epoch, rates in 'per day' units.
         day_ns = 86400e9
-        tr = r.index.astype(int)
+        tr = r.index.view(np.int64)
         ti = tr - fD(tr) * day_ns
         ri = r.to_numpy() / (1 - fdD(tr))
 
@@ -698,7 +698,7 @@ def plot_daily_trends(ndays=100, lastday=-1, mun_regexp=None, region_list=None,
         win_xtitle = ''
 
     ax.set_title(title)
-    fig.canvas.set_window_title(f'Case trends (ndays={ndays}){win_xtitle}')
+    fig.canvas.manager.set_window_title(f'Case trends (ndays={ndays}){win_xtitle}')
     fig.show()
 
 
@@ -740,7 +740,7 @@ def plot_anomalies_deltas(ndays=120):
     tools.set_xaxis_dateformat(ax, maxticks=7)
     title = 'Anomaly correction'
     ax.set_title(title)
-    fig.canvas.set_window_title(title)
+    fig.canvas.manager.set_window_title(title)
     fig.show()
 
 
@@ -862,7 +862,7 @@ def plot_Rt(ndays=100, lastday=-1, delay='DEFAULT', regions='Nederland', source=
         else:
             delay_str = f'{delay_min:.2g}-{delay_max:.2g}'
 
-        fmt = 'o'
+        fmt = marker
         psize = 5 if ndays < 30 else 3
 
         if region.startswith('POP:'):
@@ -873,8 +873,8 @@ def plot_Rt(ndays=100, lastday=-1, delay='DEFAULT', regions='Nederland', source=
             label = re.sub('^[A-Z]+:', '', region)
 
         if not only_trendlines and region != 'DUMMY':
-            ax.plot(Rt[:-3], fmt, label=label, marker=marker, markersize=psize, color=color)
-            ax.plot(Rt[-3:], fmt, markersize=psize, color=color, marker=marker, alpha=0.35)
+            ax.plot(Rt[:-3], fmt, label=label, markersize=psize, color=color)
+            ax.plot(Rt[-3:], fmt, markersize=psize, color=color, alpha=0.35)
 
         # add confidence range (ballpark estimate)
         print(region)
@@ -1006,13 +1006,12 @@ def plot_Rt(ndays=100, lastday=-1, delay='DEFAULT', regions='Nederland', source=
         _add_mobility_data_to_R_plot(ax)
 
     ax.text(0.99, 0.98, '@hk_nien', transform=ax.transAxes,
-            verticalAlignment='top', horizontalAlignment='right',
-            rotation=90)
+            va='top', ha='right', rotation=90)
 
     ax.legend(loc='upper left')
 
     if mode == 'show':
-        fig.canvas.set_window_title(f'Rt ({", ".join(regions)[:30]}, ndays={ndays})')
+        fig.canvas.manager.set_window_title(f'Rt ({", ".join(regions)[:30]}, ndays={ndays})')
         fig.show()
 
 
@@ -1061,7 +1060,7 @@ def plot_Rt_oscillation():
     ax.set_ylabel('Power')
     ax.grid()
 
-    fig.canvas.set_window_title('Rt oscillation')
+    fig.canvas.manager.set_window_title('Rt oscillation')
 
     fig.show()
 
@@ -1158,7 +1157,7 @@ def plot_barchart_daily_counts(istart=-70, istop=None, region='Nederland', figsi
 
     title = f'Positieve tests per dag ({region}) - log schaal, rechte lijn = exponentiële groei'
     ax.set_title(title)
-    fig.canvas.set_window_title(title)
+    fig.canvas.manager.set_window_title(title)
     fig.show()
 
 

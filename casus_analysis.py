@@ -985,7 +985,7 @@ class DOOCorrection:
 
         if title:
             ax.set_title(title)
-            fig.canvas.set_window_title(title)
+            fig.canvas.manager.set_window_title(title)
 
         _show_save_fig(fig, show, fname)
 
@@ -1152,7 +1152,7 @@ def get_reporting_delay(df, initial_delay=7, end_trunc=4, start_trunc=5, plot=Tr
         for ax in axs:
             tools.set_xaxis_dateformat(ax)
 
-        fig.canvas.set_window_title('Rapportagevertraging')
+        fig.canvas.manager.set_window_title('Rapportagevertraging')
         fig.show()
 
     return delays_d

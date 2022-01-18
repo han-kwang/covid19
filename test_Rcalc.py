@@ -109,7 +109,7 @@ def calc_plot_scenario(daily_pos, labels=None, title='Simulatie'):
 
 
     ax.xaxis.set_major_locator(ticker.MultipleLocator(7))
-    fig.canvas.set_window_title(title)
+    fig.canvas.manager.set_window_title(title)
     fig.show()
     plt.pause(0.3)
     return df

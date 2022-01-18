@@ -210,7 +210,7 @@ def run_plot_sim(
     daynums = np.arange(ngen) * Tgen
     if title:
         print(title)
-        fig.canvas.set_window_title(f'{title} - SIR-simulation')
+        fig.canvas.manager.set_window_title(f'{title} - SIR-simulation')
         title = f'{title}\n'
     else:
         title = ''

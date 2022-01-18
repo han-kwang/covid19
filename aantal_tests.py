@@ -25,7 +25,7 @@ ax = axs[0]
 ax.plot(dft['Tested_with_result'].iloc[-50:])
 title = 'Dagelijks afgenomen tests bij GGD'
 ax.set_title(title)
-fig.canvas.set_window_title(title)
+fig.canvas.manager.set_window_title(title)
 
 ax = axs[1]
 ax.set_title('Percentage positief')
@@ -62,7 +62,7 @@ fig, axs = plt.subplots(2, 1, figsize=(10, 6), tight_layout=True, sharex=True)
 ax = axs[0]
 title = 'Dagelijks afgenomen tests bij GGD'
 axs[0].set_title(title)
-fig.canvas.set_window_title(title)
+fig.canvas.manager.set_window_title(title)
 axs[1].set_title('Percentage positief')
 
 for key in ['low_pollen_20210226', 'high_pollen_20210226']:

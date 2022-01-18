@@ -610,7 +610,7 @@ def plot_countries_odds_ratios(country_select='all_recent', subtract_eng_bg=True
 
     ax.legend(loc='upper left', bbox_to_anchor=(1.15, 1), fontsize=9)
     ax.set_title('B.1.1.7 presence in positive cases, with $\\log_e$ slopes')
-    fig.canvas.set_window_title('B117 in countries/regions')
+    fig.canvas.manager.set_window_title('B117 in countries/regions')
 
 
     if not wiki:
