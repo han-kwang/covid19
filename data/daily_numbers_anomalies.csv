@@ -62,4 +62,8 @@ Date_report,fraction,days_back,reference
 2021-12-29,0.07,-1
 # RIVM data page 6 Jan, 7 Jan
 2022-01-07,0.05,-1
+# RIVM data page 13 Jan (no message on 14 Jan)
+2022-01-14,0.01,-1
+# RIVM data page 18 Jan
+2022-01-18,0.2,0,PLACEHOLDER
 # EOF
