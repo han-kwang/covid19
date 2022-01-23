@@ -13,6 +13,7 @@ import sys
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import nlcovidstats as nlcs
 from tools import set_xaxis_dateformat, set_yaxis_log_minor_labels
 import ggd_data
 
@@ -142,7 +143,6 @@ def plot_daily_tests_and_delays(date_min, date_max='2099-01-01', src_col='n_test
     # Convert to index 'sdate' and columns 2, 3, 4, ... with n_tested
     # at 2, 3, ... days after sampling date.
     df = load_testdata(date_min, date_max)
-
     n_days_wait = 5
     for iw in range(2, n_days_wait+1):
         df1 = df.loc[df['sdate'] == df['fdate'] - pd.Timedelta(iw, 'd')]
@@ -156,6 +156,8 @@ def plot_daily_tests_and_delays(date_min, date_max='2099-01-01', src_col='n_test
         for j in range(iw, n_days_wait+1):
             df.at[sdate, j] = np.nan
 
+    # Remove bad rows
+    df = df.loc[df['fdate'].notna()].copy()
 
     fig, ax = plt.subplots(figsize=(9, 5), tight_layout=True)
     barwidth = pd.Timedelta(1, 'd')
@@ -222,8 +224,37 @@ def plot_daily_tests_and_delays(date_min, date_max='2099-01-01', src_col='n_test
         ax.set_ylim(0, 1.15*df[src_col].max())
         ax.set_title('Aantal testuitslagen per dag - laatste drie dagen mogelijk incompleet')
 
-    ax.set_xlabel('Datum monstername')
+    # Smooth line
+    halfday = pd.Timedelta(12, 'h')
+    nums7 = nlcs.get_rolling7_with_est3(df[src_col], 3)
+    ax.plot(
+        df.index[:-3]+halfday, nums7[:-3], label='7-d gemiddelde',
+        color='black', alpha=0.5
+        )
+    ax.plot(
+        df.index[-4:]+halfday, nums7[-4:],
+        linestyle=(2, (2, 2)), color='black', alpha=0.5
+        )
 
+    # % positive axis
+    ax2 = ax.twinx()
+    pct_pos = df['n_pos']/df['n_tested']*100
+    pct_pos_7 = nlcs.get_rolling7_with_est3(pct_pos, 3)
+    msize = min(10, max(1.5, 0.04 * len(pct_pos)))
+    ax2.plot(
+        df.index+halfday, pct_pos, 'x', label='% positief',
+        color='black', markersize=msize
+        )
+    ax2.plot(df.index[:-3]+halfday, pct_pos_7[:-3], color='black')
+    ax2.plot(
+        df.index[-4:]+halfday, pct_pos_7[-4:],
+        linestyle=(2, (2, 2)), color='black'
+        )
+    ax2.legend(loc='upper right')
+    ax2.set_ylabel('% positief')
+    ax2.set_ylim(0, None)
+
+    ax.set_xlabel('Datum monstername')
     ax.legend(loc='upper left')
     set_xaxis_dateformat(ax, maxticks=15)
 

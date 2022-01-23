@@ -186,7 +186,7 @@ def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=None,
         df_mun.index[mask_anom]+pd.Timedelta('2 h'),
         df_mun_c.loc[mask_anom, 'Delta']*population,
         s=20, marker='x', alpha=0.8, color='#004488', zorder=10,
-        label='RIVM schattingen i.v.m. datastoring',
+        label='RIVM schattingen/onvolledig i.v.m. datastoring/drukte',
         )
 
     ax.legend()
