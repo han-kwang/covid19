@@ -209,9 +209,13 @@ def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=None,
 
 def plot_R_graph_multiple_methods(
         num_days=100, ylim=(0.6, 1.5),
-        methods=('rivm', 'melding', 'ggd_wow', 'ggd_der', 'tvt')
+        methods=('rivm', 'melding', 'ggd_wow', 'ggd_der', 'tvt'),
+        Tgen=4.0
         ):
-    """Plot national R graph with annotations and multiple calculation methods."""
+    """Plot national R graph with annotations and multiple calculation methods.
+
+    Tgen: generation interval (days)
+    """
     # dfR_rivm = nlcs.DFS['Rt_rivm'].copy()
 
 
@@ -219,11 +223,11 @@ def plot_R_graph_multiple_methods(
 
     lastday = -1  # -1 for most recent
     # lastday = -10  # for testing.
-    df = load_ggd_pos_tests(lastday=lastday, pattern_weeks=2)
+    df = load_ggd_pos_tests(lastday=lastday, pattern_weeks=2, Tgen=Tgen)
     nlcs.plot_Rt(
         num_days,
         regions=('Nederland' if 'melding' in methods else 'DUMMY'),
-        lastday=lastday, delay=nlcs.DELAY_INF2REP, ylim=ylim
+        lastday=lastday, delay=nlcs.DELAY_INF2REP, ylim=ylim, Tc=Tgen
         )
     fig = plt.gcf()
     ax = fig.get_axes()[0]
@@ -236,7 +240,7 @@ def plot_R_graph_multiple_methods(
         add_dataset(ax, df['R_d7r'], 3.0, 'GGD afgeleide', '+', 'red', err_fan=None)
 
     if 'tvt' in methods:
-        df_tvt = get_R_from_TvT()
+        df_tvt = get_R_from_TvT(Tgen=Tgen)
         ax.plot(df_tvt['R_interp'], color='purple', linestyle='--', alpha=0.5)
         ax.errorbar(df_tvt.index, df_tvt['R'], df_tvt['R_err'], alpha=0.5,
                     color='purple')

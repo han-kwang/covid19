@@ -137,9 +137,12 @@ def plot_daily_tests_and_delays(date_min, date_max='2099-01-01', src_col='n_test
     """Note: date_min, date_max refer to file dates. Test dates are generally
     up to two days earlier. Repository 'mzelst-covid19' should be up to date.
 
+    date_min can be a negative int: then it is the number of days ago.
+
     Optionally set src_col='n_pos'
     """
-
+    if isinstance(date_min, int):
+        date_min = (pd.Timestamp('now') + pd.Timedelta(date_min, 'd')).strftime('%Y-%m-%d')
     # Convert to index 'sdate' and columns 2, 3, 4, ... with n_tested
     # at 2, 3, ... days after sampling date.
     df = load_testdata(date_min, date_max)
@@ -235,7 +238,10 @@ def plot_daily_tests_and_delays(date_min, date_max='2099-01-01', src_col='n_test
         df.index[-4:]+halfday, nums7[-4:],
         linestyle=(2, (2, 2)), color='black', alpha=0.5
         )
+    if nums7.max() > ax.get_ylim()[1]:
+        ax.set_ylim(0, nums7.max())
 
+    set_xaxis_dateformat(ax, maxticks=15)
     # % positive axis
     ax2 = ax.twinx()
     pct_pos = df['n_pos']/df['n_tested']*100
@@ -250,7 +256,7 @@ def plot_daily_tests_and_delays(date_min, date_max='2099-01-01', src_col='n_test
         df.index[-4:]+halfday, pct_pos_7[-4:],
         linestyle=(2, (2, 2)), color='black'
         )
-    ax2.legend(loc='upper right')
+    ax2.legend(loc='lower right')
     ax2.set_ylabel('% positief')
     ax2.set_ylim(0, None)
 

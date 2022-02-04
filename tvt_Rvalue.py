@@ -49,8 +49,12 @@ def load_tvt_data():
     return df
 
 
-def get_R_from_TvT():
+def get_R_from_TvT(Tgen=4.0):
     """Return DataFrame with R estimate from TvT data.
+
+    Parameters:
+
+    - Tgen: generation interval
 
     Return DataFrame:
 
@@ -66,7 +70,6 @@ def get_R_from_TvT():
     ts = (df.index - date0) / pd.Timedelta('1 d')
     fposs = df['f_pos'].to_numpy()
     # convert week-over-week growth to R
-    Tgen = 4.0 # generation interval
     Rs = (fposs[1:] / fposs[:-1]) ** (Tgen/(ts[1:] - ts[:-1]))
 
     # error estimate
