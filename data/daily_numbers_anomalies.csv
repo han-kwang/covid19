@@ -64,6 +64,41 @@ Date_report,fraction,days_back,reference
 2022-01-07,0.05,-1
 # RIVM data page 13 Jan (no message on 14 Jan)
 2022-01-14,0.01,-1
-# RIVM data page 18 Jan
-2022-01-18,0.2,0,PLACEHOLDER
+# RIVM data page 18 Jan (storing), 19 Jan (achterstand), 20 Jan (+27k cumulatief)
+2022-01-18,0.01,0,"Storing"
+# https://twitter.com/mzelst/status/1483805835188969473
+2022-01-19,0.01,0,"Achterstand"
+2022-01-20,0.01,0,"27k achterstand"
+2022-01-21,0.01,0,PLACEHOLDER
+# 22 Jan achterstand 46k
+2022-01-22,0.01,0,PLACEHOLDER
+# 23 Jan achterstand 48k
+2022-01-23,0.01,0,PLACEHOLDER
+# 24 Jan achterstand 46k
+2022-01-24,0.01,0,PLACEHOLDER
+# 25 Jan 60k
+2022-01-25,0.01,0,PLACEHOLDER
+# 26 Jan 78k
+2022-01-26,0.01,0,PLACEHOLDER
+# 27 Jan 72k
+2022-01-27,0.01,0,PLACEHOLDER
+# 28 Jan 76k
+2022-01-28,0.01,0,PLACEHOLDER
+# 29 Jan 122k
+2022-01-29,0.01,0,PLACEHOLDER
+# 30 Jan 131k
+2022-01-30,0.01,0,PLACEHOLDER
+2022-01-31,0.01,0,"105k achterstand"
+2022-02-01,0.01,0,"81k achterstand"
+2022-02-02,0.01,0,"104k achterstand"
+2022-02-03,0.01,0,"113k achterstand"
+2022-02-04,0.01,0,"124k achterstand"
+2022-02-05,0.01,0,"---k achterstand"
+2022-02-06,0.01,0,"---k achterstand"
+2022-02-07,0.01,0,"---k achterstand"
+2022-02-08,0.01,0,"---k achterstand"
+2022-02-09,0.01,0,"---k achterstand"
+
+
+
 # EOF
