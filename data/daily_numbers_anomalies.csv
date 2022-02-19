@@ -65,39 +65,33 @@ Date_report,fraction,days_back,reference
 # RIVM data page 13 Jan (no message on 14 Jan)
 2022-01-14,0.01,-1
 # RIVM data page 18 Jan (storing), 19 Jan (achterstand), 20 Jan (+27k cumulatief)
-2022-01-18,0.01,0,"Storing"
-# https://twitter.com/mzelst/status/1483805835188969473
-2022-01-19,0.01,0,"Achterstand"
-2022-01-20,0.01,0,"27k achterstand"
-2022-01-21,0.01,0,PLACEHOLDER
-# 22 Jan achterstand 46k
-2022-01-22,0.01,0,PLACEHOLDER
-# 23 Jan achterstand 48k
-2022-01-23,0.01,0,PLACEHOLDER
-# 24 Jan achterstand 46k
-2022-01-24,0.01,0,PLACEHOLDER
-# 25 Jan 60k
-2022-01-25,0.01,0,PLACEHOLDER
-# 26 Jan 78k
-2022-01-26,0.01,0,PLACEHOLDER
-# 27 Jan 72k
-2022-01-27,0.01,0,PLACEHOLDER
-# 28 Jan 76k
-2022-01-28,0.01,0,PLACEHOLDER
-# 29 Jan 122k
-2022-01-29,0.01,0,PLACEHOLDER
-# 30 Jan 131k
-2022-01-30,0.01,0,PLACEHOLDER
-2022-01-31,0.01,0,"105k achterstand"
-2022-02-01,0.01,0,"81k achterstand"
-2022-02-02,0.01,0,"104k achterstand"
-2022-02-03,0.01,0,"113k achterstand"
-2022-02-04,0.01,0,"124k achterstand"
-2022-02-05,0.01,0,"---k achterstand"
-2022-02-06,0.01,0,"---k achterstand"
-2022-02-07,0.01,0,"---k achterstand"
-2022-02-08,0.01,0,"---k achterstand"
-2022-02-09,0.01,0,"---k achterstand"
+# Create list using make_anomaly_corrections.py
+# Note: 18/19 are estimates (RIVM didn't specify a number).
+2022-01-18,0.161,0,"Achterstand 5k, correctie 5k"
+2022-01-19,0.265,0,"Achterstand 15k, correctie 10k"
+2022-01-20,0.304,0,"Achterstand 27k, correctie 12k"
+2022-01-21,0.159,0,"Achterstand 36k, correctie 9k"
+2022-01-22,0.22,0,"Achterstand 46k, correctie 10k"
+2022-01-23,0.031,0,"Achterstand 48k, correctie 2k"
+2022-01-24,-0.031,0,"Achterstand 46k, correctie -2k"
+2022-01-25,0.261,0,"Achterstand 60k, correctie 14k"
+2022-01-26,0.311,0,"Achterstand 78k, correctie 18k"
+2022-01-27,-0.094,0,"Achterstand 72k, correctie -6k"
+2022-01-28,0.055,0,"Achterstand 76k, correctie 4k"
+2022-01-29,1.178,0,"Achterstand 122k, correctie 46k"
+2022-01-30,0.121,0,"Achterstand 131k, correctie 9k"
+2022-01-31,-0.235,0,"Achterstand 105k, correctie -26k"
+2022-02-01,-0.229,0,"Achterstand 81k, correctie -24k"
+2022-02-02,0.347,0,"Achterstand 104k, correctie 23k"
+2022-02-03,0.11,0,"Achterstand 113k, correctie 9k"
+2022-02-04,0.161,0,"Achterstand 124k, correctie 11k"
+2022-02-05,1.304,0,"Achterstand 176k, correctie 52k"
+2022-02-05,1.304,0,"Achterstand 176k, correctie 52k"
+2022-02-06,0.107,0,"Achterstand 186k, correctie 10k"
+2022-02-07,0.065,0,"Achterstand 191k, correctie 5k"
+2022-02-08,-0.515,0,"Achterstand 0k, correctie -191k"
+#2022-02-08,0.0,0,"---k achterstand"
+#2022-02-09,0.01,0,"---k achterstand"
 
 
 
