@@ -283,7 +283,7 @@ def check_RIVM_message():
 
     if len(htm) > 500:
         htm = f'{htm[:497]}...'
-    if re.search('storing|onderraportage|achterstand', htm):
+    if re.search('storing|onderraportage|achterstand|werkelijke aantal', htm):
         print_warn(f'Warning: RIVM data page says:\n{htm}')
 
 

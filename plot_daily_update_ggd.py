@@ -6,37 +6,56 @@ Created on Tue Nov 16 22:02:09 2021
 
 @hk_nien
 """
-
+import sys
 import matplotlib.pyplot as plt
 import tools
 import nlcovidstats as nlcs
 import nlcovidstats_data as ncd
-import pandas as pd
+# import pandas as pd
+import numpy as np
 
 import plot_aantal_tests_updates as ggd_tests
 import calc_R_from_ggd_tests as ggd_R
 import ggd_data
-import os
-import tools
+
+def check_anomalies():
+    """Abort if anomalies not up to date."""
+    cdf = nlcs.DFS['cases']
+    adf = nlcs.DFS['anomalies']
+
+    date = cdf.iloc[-1]['Date_of_report']
+    if date not in adf.index or np.any(np.abs(adf.loc[date, 'fraction']) < 0.011):
+        print('---')
+        tools.print_warn(
+            f'Anomalies not up to date for {date}.\n'
+            'Update/run make_anomaly_corrections.py and update data/daily_numbers_anomalies.csv'
+            )
+        sys.exit(1)
 
 
 # #%% R graph for daily Twitter update
 if __name__ == '__main__':
 
     plt.close('all')
-    tools.wait_for_refresh('15:00:00', '15:15:00')
+    tools.wait_for_refresh('15:00:00', '15:16:00')
+    ncd.check_RIVM_message()
     nlcs.reset_plots()
     nlcs.init_data(autoupdate=True)
     ggd_data.update_ggd_tests()
-    ncd.check_RIVM_message()
+    # check_anomalies()
+
     print('---GGD tests---')
     ggd_tests.plot_daily_tests_and_delays(-(13*7+3))
         # ggd_tests.plot_daily_tests_and_delays('2021-09-01', src_col='n_pos')
     plt.pause(0.25)
     print('--R calculation--')
-    ggd_R.plot_rivm_and_ggd_positives(90, yscale=('log', 2500, 130000))
+    ggd_R.plot_rivm_and_ggd_positives(90, yscale=('log', 7500, 400000))
     plt.pause(0.25)
-    ggd_R.plot_R_graph_multiple_methods(num_days=100, ylim=(0.6, 1.7))
+
+    ggd_R.plot_R_graph_multiple_methods(
+        num_days=100, ylim=(0.6, 1.7),
+        methods=('rivm', 'melding', 'ggd_der', 'tvt')
+        )
     plt.gcf().get_axes()[0].legend(loc='upper left')
     plt.pause(0.25)
     nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)

@@ -226,7 +226,7 @@ def plot_daily_tests_and_delays(date_min, date_max='2099-01-01', src_col='n_test
     else:
         ax.set_ylim(0, 1.15*df[src_col].max())
         ax.set_title('Aantal testuitslagen per dag - laatste drie dagen mogelijk incompleet')
-
+    fig.canvas.manager.set_window_title(ax.title.get_text())
     # Smooth line
     halfday = pd.Timedelta(12, 'h')
     nums7 = nlcs.get_rolling7_with_est3(df[src_col], 3)

@@ -149,15 +149,15 @@ def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=None,
 
     corr = ' schatting datastoring' if correct_anomalies else ''
 
-    fig, ax = plt.subplots(figsize=(9, 4), tight_layout=True)
+    fig, ax = plt.subplots(figsize=(9, 5), tight_layout=True)
     ax.set_title('Positieve tests per dag')
-
+    fig.canvas.manager.set_window_title(ax.title.get_text())
 
     _plot_steps_and_smooth(
         ax,
         df_mun.index+pd.Timedelta('2 h'),  # df_mun timestamps daily at 10:00
         df_mun['Delta']*population,
-        df_mun['Delta7r']*population,
+        df_mun_c['Delta7r']*population,
         label=f'RIVM meldingen (gemeentes){corr}',
         color='#0044cc'
         )
@@ -218,7 +218,6 @@ def plot_R_graph_multiple_methods(
     """
     # dfR_rivm = nlcs.DFS['Rt_rivm'].copy()
 
-
     #fig, ax = plt.subplots(figsize=(12, 4), tight_layout=True)
 
     lastday = -1  # -1 for most recent
@@ -237,7 +236,7 @@ def plot_R_graph_multiple_methods(
     if 'ggd_wow' in methods:
         add_dataset(ax, df['R_wow'], 6.5, 'GGD week-op-week', 'x', '#008800', err_fan=None)
     if 'ggd_der' in methods:
-        add_dataset(ax, df['R_d7r'], 3.0, 'GGD afgeleide', '+', 'red', err_fan=None)
+        add_dataset(ax, df['R_d7r'], 3.0, 'GGD-positief', '+', 'red', err_fan=None)
 
     if 'tvt' in methods:
         df_tvt = get_R_from_TvT(Tgen=Tgen)
