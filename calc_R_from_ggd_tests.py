@@ -128,16 +128,24 @@ def _plot_steps_and_smooth(ax, dates, daydata, r7data, label, color):
         )
 
 
-def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=None,
-                                yscale=('log', 300, 25000)):
+def plot_rivm_and_ggd_positives(
+        num_days=100, correct_anomalies=None,
+        yscale=('log', 300, 25000), trim_end=0
+        ):
     """Plot RIVM daily cases and GGD positive tests together in one graph.
 
-    correct_anomalies is ignored. For backward compatibility.
+    Parameters:
 
-    yscale: ('log', ymin, ymax) or ('linear', ymin, ymax)
+    - num_days: number of days to display.
+    - correct_anomalies: ignored. For backward compatibility.
+    - yscale: ('log', ymin, ymax) or ('linear', ymin, ymax).
+    - trim_end: how many days up to present to remove.
+      Data shown is for the interval (today-trim_end-num_days) ...
+      (today-trim_end).
     """
 
     df_ggd = load_ggd_pos_tests(-1)
+    df_ggd = df_ggd.iloc[:len(df_ggd)-trim_end]
     df_mun_c, population = nlcs.get_region_data(
         'Nederland', -1,
         correct_anomalies=True
@@ -153,6 +161,8 @@ def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=None,
     ax.set_title('Positieve tests per dag')
     fig.canvas.manager.set_window_title(ax.title.get_text())
 
+    df_mun_c = df_mun_c.iloc[:len(df_mun_c)-trim_end]
+    df_mun = df_mun.iloc[:len(df_mun)-trim_end]
     _plot_steps_and_smooth(
         ax,
         df_mun.index+pd.Timedelta('2 h'),  # df_mun timestamps daily at 10:00
@@ -205,6 +215,89 @@ def plot_rivm_and_ggd_positives(num_days=100, correct_anomalies=None,
         tools.set_yaxis_log_minor_labels(ax)
 
     fig.show()
+
+
+def scatterplot_rivm_ggd_positives(
+        t_a='2021-09-23', t_b='2021-11-12'
+        ):
+    """Plot RIVM daily cases versus GGD positive tests.
+
+    Parameters:
+
+    - num_days: number of days to display.
+    - trim_end: how many days up to present to remove.
+      Data shown is for the interval (today-trim_end-num_days) ...
+      (today-trim_end).
+    """
+    t_a = pd.Timestamp(t_a) + pd.Timedelta('12 h')
+    t_b = pd.Timestamp(t_b) + pd.Timedelta('12 h')
+    npos_ggd = load_ggd_pos_tests(-1)['n_pos']
+    df_mun_c, population = nlcs.get_region_data(
+        'Nederland', -1,
+        correct_anomalies=True
+        )
+    npos_mun = (df_mun_c['Delta'] * population).astype(int)
+
+    # Set all data to 12:00 (noon) and map GGD to publication date.
+    npos_ggd.index += pd.Timedelta(2, 'd') # publication date
+    npos_mun.index += pd.Timedelta(2, 'h')
+
+
+    colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b']
+    kernels = [
+        ('as-is', [0, 0, 1, 0, 0]),
+        #('0.25 d', [0, 0.25, 0.75, 0, 0]),
+        ('0.5 d', [0, 0.5, 0.5, 0, 0]),
+        #('0.75 d', [0, 0.75, 0.25, 0, 0]),
+        ('1 d', [0, 1, 0, 0, 0]),
+        ('1.5 d', [0.5, 0.5, 0, 0, 0]),
+        ]
+
+    fig, axs = plt.subplots(2, 1, figsize=(7, 9), tight_layout=True)
+    ax = axs[0]
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    axs[1].set_yscale('log')
+    ax.set_xlabel('GGD')
+    ax.set_ylabel('RIVM')
+    for color, (label, kernel) in zip(colors, kernels):
+        # Redistribute GGD bins.
+        assert len(kernel) % 2 == 1
+        npos_ggd_shifted = pd.Series(
+            data=np.convolve(npos_ggd.values, kernel, 'same'),
+            index=npos_ggd.index
+            )
+
+        ax= axs[0]
+        if label == 'as-is':
+            ax.set_title(f'Coverage: {t_a.strftime("%Y-%m-%d")} '
+                         f'- {t_b.strftime("%Y-%m-%d")}')
+            axs[1].plot(
+                npos_mun.loc[t_a:t_b], linestyle=':', color='k', label='RIVM',
+                zorder=10
+                )
+
+        xs = npos_ggd_shifted.loc[t_a:t_b]
+        ys = npos_mun.loc[t_a:t_b]
+        ax.plot(xs, ys, 'o', label=label, color=color, alpha=0.5)
+
+        # mark Mondays
+        #mask = (xs.index.dayofweek == 0)
+        #ax.scatter(xs[mask], ys[mask], zorder=10, s=10, color=color)
+
+        ax = axs[1]
+        ax.plot(xs, linestyle='-', color=color, label=f'GGD {label}')
+
+
+
+    axs[0].grid(which='both')
+    tools.set_xaxis_dateformat(axs[1])
+
+    axs[0].legend()
+    axs[1].legend()
+    fig.show()
+
+
 
 
 def plot_R_graph_multiple_methods(

@@ -53,12 +53,17 @@ if __name__ == '__main__':
     plt.pause(0.25)
 
     ggd_R.plot_R_graph_multiple_methods(
-        num_days=100, ylim=(0.6, 1.7),
+        num_days=100, ylim=(0.5, 2.5),
         methods=('rivm', 'melding', 'ggd_der', 'tvt')
         )
     plt.gcf().get_axes()[0].legend(loc='upper left')
     plt.pause(0.25)
-    nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)
+    nlcs.plot_Rt(
+        60, regions=['Nederland', 'HR:Noord', 'HR:Midden', 'HR:Zuid'],
+        ylim=(0.5, 2.5)
+        )
+
+    # nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)
 
     #%%
     if 0:
