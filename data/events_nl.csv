@@ -75,8 +75,11 @@ Date,Date_stop,Description,Flags
 2022-01-20,,TvT R effect versoepeling,RGraph
 2022-01-24,2022-02-06,RIVM data onregelmatig,RGraph
 2022-02-16,,Versoepeling 1
-2022-02-18,,Versoepeling 2 o.a. 01:00u
-2022-02-25,,Versoepeling 3
+2022-02-18,,Versoepeling 2 + Eunice,CaseGraph
+2022-02-18,,Versoepeling 2 o.a. 01u,RGraph
+2022-02-12,,Eunice storm 18 feb,RGraph
+2022-02-25,,"Versoepeling 3 o.a. einde 1,5 m."
+2022-02-26,2022-03-01,Carnaval
 2022-02-20,2022-02-27,Schoolvak. Noord
 2022-02-27,2022-03-06,Schoolvak. Mid/Zuid
 # Note: Meivakantie may start earlier in many schools.

@@ -51,4 +51,6 @@
 # Note: list in report is trimmed as of 2022-02-15.
 # Full list in: https://www.rivm.nl/sites/default/files/2022-02/COVID-19_WebSite_rapport_wekelijks_20220208_1259_final.pdf
 07-02-2022 - 13-02-2022 291465 8256 2.8
-
+14-02-2022 - 20-02-2022 255259 5303 2.1
+21-02-2022 - 27-02-2022 275459 5276 1.9
+# END
