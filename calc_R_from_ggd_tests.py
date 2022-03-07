@@ -28,7 +28,7 @@ Created on Sat Nov 13 22:26:05 2021
 Author: @hk_nien on Twitter.
 """
 
-from pathlib import Path
+# from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -40,8 +40,7 @@ from tvt_Rvalue import get_R_from_TvT
 # Clone of the github.com/mzelst/covid-19 repo.
 test_path = '../mzelst-covid19-nobackup/data-rivm/tests'
 
-
-def load_ggd_pos_tests(lastday=-1, pattern_weeks=2, Tgen=4.0):
+def load_ggd_pos_tests(lastday=-1, pattern_weeks=2, Tgen=4.0, region_re=None):
     """Get latest GGD test data as DataFrame.
 
     Parameters:
@@ -50,6 +49,7 @@ def load_ggd_pos_tests(lastday=-1, pattern_weeks=2, Tgen=4.0):
       recent) or 'yyyy-mm-dd' string for specific date.
     - pattern_weeks: how many previous weeks to estimate weekday patterns.
     - Tgen: generation interval (days)
+    - region_re: optional regexp for GGD regions.
 
     Return DataFrame:
 
@@ -64,7 +64,7 @@ def load_ggd_pos_tests(lastday=-1, pattern_weeks=2, Tgen=4.0):
 
     Days with known bad data will have NaN.
     """
-    df = ggd_data.load_ggd_pos_tests(lastday)
+    df = ggd_data.load_ggd_pos_tests(lastday, region_regexp=region_re)
     df['n_pos_7'] = nlcs.get_rolling7_with_est3(df['n_pos'], 3, m=2)
 
     # Shift dates to mid-day
@@ -82,7 +82,8 @@ def load_ggd_pos_tests(lastday=-1, pattern_weeks=2, Tgen=4.0):
     return df
 
 
-def add_dataset(ax, Rs, delay_days, label, marker, color, err_fan=(7, 0.15)):
+def add_dataset(ax, Rs, delay_days, label, marker, color, err_fan=(7, 0.15),
+                markersize=5, zorder=0):
     """Add an R dataset with smoothed line.
 
     - err_fan (n, dR): specify error fan-out to last n-1 days up to +/- dR.
@@ -90,9 +91,9 @@ def add_dataset(ax, Rs, delay_days, label, marker, color, err_fan=(7, 0.15)):
     delay = pd.Timedelta(delay_days, 'd')
     ax.plot(
         Rs.index - delay, Rs,
-        marker=marker, linestyle='none', color=color, label=label
+        marker=marker, linestyle='none', color=color, label=label,
+        markersize=markersize, zorder=zorder
         )
-
 
     # create smooth line.
     Rs.interpolate(inplace=True)  # for missing values in the middle
@@ -102,13 +103,13 @@ def add_dataset(ax, Rs, delay_days, label, marker, color, err_fan=(7, 0.15)):
 
     from scipy.signal import savgol_filter
     Rsmooth = savgol_filter(Rs.values, 11, 2)
-    ax.plot(Rs.index - delay, Rsmooth, '-', color=color)
+    ax.plot(Rs.index - delay, Rsmooth, '-', color=color, zorder=zorder)
     if err_fan:
         n, dR = err_fan
         Rsmooth1 = Rsmooth[-n:]
         fan = np.linspace(0, dR, n)
         ax.fill_between(Rs.index[-n:] - delay, Rsmooth1-fan, Rsmooth1+fan,
-                        color=color, alpha=0.2)
+                        color=color, alpha=0.2, zorder=zorder)
 
 
 def _plot_steps_and_smooth(ax, dates, daydata, r7data, label, color):
@@ -130,7 +131,8 @@ def _plot_steps_and_smooth(ax, dates, daydata, r7data, label, color):
 
 def plot_rivm_and_ggd_positives(
         num_days=100, correct_anomalies=None,
-        yscale=('log', 300, 25000), trim_end=0
+        yscale=('log', 300, 25000), trim_end=0,
+        rivm_regions=('Landelijk',), ggd_regions=('Landelijk',)
         ):
     """Plot RIVM daily cases and GGD positive tests together in one graph.
 
@@ -142,43 +144,57 @@ def plot_rivm_and_ggd_positives(
     - trim_end: how many days up to present to remove.
       Data shown is for the interval (today-trim_end-num_days) ...
       (today-trim_end).
+    - rivm_regions: list of region strings, see doc of
+      ``nlcovidstats.get_region_data`` er 'Landelijk'.
+    - ggd_regions: list of region strings, see doc of
+      ``load_positive_tests``, or 'Landelijk'.
+
     """
-
-    df_ggd = load_ggd_pos_tests(-1)
-    df_ggd = df_ggd.iloc[:len(df_ggd)-trim_end]
-    df_mun_c, population = nlcs.get_region_data(
-        'Nederland', -1,
-        correct_anomalies=True
-        )
-    df_mun, population = nlcs.get_region_data(
-        'Nederland', -1,
-        correct_anomalies=False
-        )
-
     corr = ' schatting datastoring' if correct_anomalies else ''
-
     fig, ax = plt.subplots(figsize=(9, 5), tight_layout=True)
     ax.set_title('Positieve tests per dag')
     fig.canvas.manager.set_window_title(ax.title.get_text())
 
-    df_mun_c = df_mun_c.iloc[:len(df_mun_c)-trim_end]
-    df_mun = df_mun.iloc[:len(df_mun)-trim_end]
-    _plot_steps_and_smooth(
-        ax,
-        df_mun.index+pd.Timedelta('2 h'),  # df_mun timestamps daily at 10:00
-        df_mun['Delta']*population,
-        df_mun_c['Delta7r']*population,
-        label=f'RIVM meldingen (gemeentes){corr}',
-        color='#0044cc'
-        )
-    _plot_steps_and_smooth(
-        ax,
-        df_ggd.index + pd.Timedelta('2 d'),  # index timestamps daily at 12:00
-        df_ggd['n_pos'],
-        df_ggd['n_pos_7'],
-        label='GGD pos. tests (datum monstername + 2)',
-        color='#cc0000'
-        )
+    ## RIVM data
+    colors = ['#0044cc', '#217cd3', '#219ed3', '#1eaab9', '#1eb99d', '#1aaa57']*5
+    for color, region in zip(colors, rivm_regions):
+        region1 = 'Nederland' if region == 'Landelijk' else region
+        df_mun_c, population = nlcs.get_region_data(
+            region1, -1, correct_anomalies=True
+            )
+        df_mun, population = nlcs.get_region_data(
+            region1, -1, correct_anomalies=False
+            )
+        df_mun_c = df_mun_c.iloc[:len(df_mun_c)-trim_end]
+        df_mun = df_mun.iloc[:len(df_mun)-trim_end]
+        _plot_steps_and_smooth(
+            ax,
+            df_mun.index+pd.Timedelta('2 h'),  # df_mun timestamps daily at 10:00
+            df_mun['Delta']*population,
+            df_mun_c['Delta7r']*population,
+            label=f'RIVM meldingen ({region}){corr}',
+            color=color
+            )
+
+    colors = ['#cc001f', '#cc3d00', '#cc6f00', '#af912e', '#a9af2e'] * 5
+    for color, region in zip(colors, ggd_regions):
+        if region == 'Landelijk':
+            region1 = None
+            label = 'GGD pos. tests (datum monstername + 2)'
+        else:
+            region1 = region
+            label = f'GGD pos. ({region.replace("HR:", "")})'
+        df_ggd = load_ggd_pos_tests(-1, region_re=region1)
+
+        df_ggd = df_ggd.iloc[:len(df_ggd)-trim_end]
+        _plot_steps_and_smooth(
+            ax,
+            df_ggd.index + pd.Timedelta('2 d'),  # index timestamps daily at 12:00
+            df_ggd['n_pos'],
+            df_ggd['n_pos_7'],
+            label=label,
+            color=color
+            )
     ax.set_yscale(yscale[0])
     ax.set_ylim(*yscale[1:])
     dfa = nlcs.DFS['anomalies'].copy()  # index: date 10:00, columns ..., days_back
@@ -297,25 +313,24 @@ def scatterplot_rivm_ggd_positives(
     axs[1].legend()
     fig.show()
 
-
-
+def _ggdregion(region, lastday, Tgen):
+    """Return DataFrame of GGD R for holiday region HR:Noord/Midden/Zuid or regexp."""
+    df = load_ggd_pos_tests(
+        lastday=lastday, pattern_weeks=2, Tgen=Tgen, region_re=region
+        )
+    return df
 
 def plot_R_graph_multiple_methods(
         num_days=100, ylim=(0.6, 1.5),
-        methods=('rivm', 'melding', 'ggd_wow', 'ggd_der', 'tvt'),
+        methods=('rivm', 'melding', 'ggd_wow', 'ggd_der', 'tvt', 'ggd_regions'),
         Tgen=4.0
         ):
     """Plot national R graph with annotations and multiple calculation methods.
 
     Tgen: generation interval (days)
     """
-    # dfR_rivm = nlcs.DFS['Rt_rivm'].copy()
-
-    #fig, ax = plt.subplots(figsize=(12, 4), tight_layout=True)
-
     lastday = -1  # -1 for most recent
-    # lastday = -10  # for testing.
-    df = load_ggd_pos_tests(lastday=lastday, pattern_weeks=2, Tgen=Tgen)
+
     nlcs.plot_Rt(
         num_days,
         regions=('Nederland' if 'melding' in methods else 'DUMMY'),
@@ -324,12 +339,26 @@ def plot_R_graph_multiple_methods(
     fig = plt.gcf()
     ax = fig.get_axes()[0]
 
-    #    ax.plot(dfR_rivm['R'], color='k')
-
+    df = load_ggd_pos_tests(lastday=lastday, pattern_weeks=2, Tgen=Tgen)
     if 'ggd_wow' in methods:
         add_dataset(ax, df['R_wow'], 6.5, 'GGD week-op-week', 'x', '#008800', err_fan=None)
     if 'ggd_der' in methods:
-        add_dataset(ax, df['R_d7r'], 3.0, 'GGD-positief', '+', 'red', err_fan=None)
+        add_dataset(ax, df['R_d7r'], 3.0, 'GGD-positief landelijk', '+', 'red', err_fan=None,
+                    markersize=7)
+
+    if 'ggd_regions' in methods:
+        ggdr_items = [
+            ('^', 'Noord', '#da5b00'),
+            ('o', 'Midden', '#b34e06'),
+            ('v', 'Zuid', '#935224')
+            ]
+        for marker, region, color in ggdr_items:
+            add_dataset(
+                ax,
+                _ggdregion(f'HR:{region}', lastday, Tgen)['R_d7r'],
+                3.0, f'GGD {region}', marker, color, err_fan=None,
+                markersize=3, zorder=-10
+                )
 
     if 'tvt' in methods:
         df_tvt = get_R_from_TvT(Tgen=Tgen)
@@ -340,7 +369,7 @@ def plot_R_graph_multiple_methods(
                     label='TvT %positief', color='purple', zorder=10)
 
 
-    leg = ax.legend(framealpha=0.5)
+    leg = ax.legend(framealpha=0.5, loc='upper left')
     leg.set_zorder(20)
 
 

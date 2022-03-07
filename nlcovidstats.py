@@ -870,9 +870,10 @@ def plot_Rt(ndays=100, lastday=-1, delay='DEFAULT', regions='Nederland', source=
         if region.startswith('POP:'):
             label = region[4:] + ' k inw.'
         elif region == 'Nederland':
-            label = 'R schatting Nederland'
+            label = 'R landelijk'
         else:
             label = re.sub('^[A-Z]+:', '', region)
+        label += ' (RIVM meldingen)'
 
         if not only_trendlines and region != 'DUMMY':
             ax.plot(Rt[:-3], fmt, label=label, markersize=psize, color=color)
@@ -915,20 +916,12 @@ def plot_Rt(ndays=100, lastday=-1, delay='DEFAULT', regions='Nederland', source=
 
 
         label = None
-
-        if region == 'Nederland':
-            label = 'R trend Nederland'
-        elif only_trendlines:
-            label = re.sub('^.*:', '', region)
-
         if region != 'DUMMY':
-            smooth_line = ax.plot(Rt_smooth[:-5], color=color, alpha=1, zorder=0,
-                                  linestyle=('-' if i_region < 10 else '-.'),
-                                  label=label
+            ax.plot(Rt_smooth[:-5], color=color, alpha=1, zorder=0,
+                    linestyle=('-' if i_region < 10 else '-.'),
                                   )
             ax.plot(Rt_smooth[-6:], color=color, alpha=1, zorder=0,
                     linestyle='--', dashes=(2,2))
-
             labels.append((Rt[-1], f' {label}'))
 
     if len(labels) == 0:
@@ -1009,14 +1002,11 @@ def plot_Rt(ndays=100, lastday=-1, delay='DEFAULT', regions='Nederland', source=
 
     ax.text(0.99, 0.98, '@hk_nien', transform=ax.transAxes,
             va='top', ha='right', rotation=90)
-
     ax.legend(loc='upper left')
 
     if mode == 'show':
         fig.canvas.manager.set_window_title(f'Rt ({", ".join(regions)[:30]}, ndays={ndays})')
         fig.show()
-
-
 
     elif mode == 'return_fig':
         return fig

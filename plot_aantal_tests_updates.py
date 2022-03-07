@@ -25,14 +25,17 @@ test_path = '../mzelst-covid19-nobackup/data-rivm/tests'
 _CACHE = {}  # store slow data here: (date_a, date_b) -> (tm, dataframe)
 #%%
 
-def _get_testdata_1(fdate):
+def _get_testdata_1(fdate_re):
     """Return dataframe for 1 date, with column renaming.
 
     Return None if not found (no error).
     """
+    fdate, region_re = fdate_re
     fdate_str = fdate.strftime('%Y-%m-%d')
     try:
-        df = ggd_data.load_ggd_pos_tests(fdate_str, quiet=True)
+        df = ggd_data.load_ggd_pos_tests(
+            fdate_str, quiet=True, region_regexp=region_re
+            )
     except FileNotFoundError:
         return None
     df.reset_index(inplace=True)
@@ -41,7 +44,9 @@ def _get_testdata_1(fdate):
     return df
 
 
-def load_testdata(min_date='2021-01-01', max_date='2099-01-01'):
+def load_testdata(min_date='2021-01-01', max_date='2099-01-01',
+                  region_re=None
+                  ):
     """Return DataFrame. Specify mindate as 'yyyy-mm-dd'.
 
     Use cache if available.
@@ -66,18 +71,18 @@ def load_testdata(min_date='2021-01-01', max_date='2099-01-01'):
     if max_date > date_today:
         max_date = date_today
     fdate = min_date
-    fdates = []
+    fdates_res = []  # tuples (fdate, regexp)
     while fdate <= max_date:
-        fdates.append(fdate)
+        fdates_res.append((fdate, region_re))
         fdate += pd.Timedelta('1 d')
 
-    if sys.platform != 'linux' or len(fdates) < 5:
+    if sys.platform != 'linux' or len(fdates_res) < 5:
         # Single-threaded
         dfs = []
-        if len(fdates) > 10:
+        if len(fdates_res) > 10:
             print('Loading GGD data...')
-        for fdate in fdates:
-            df = _get_testdata_1(fdate)
+        for fdate_re in fdates_res:
+            df = _get_testdata_1(fdate_re)
             if df is None:
                 break
             dfs.append(df)
@@ -85,7 +90,7 @@ def load_testdata(min_date='2021-01-01', max_date='2099-01-01'):
         # Multi-threaded
         with Pool() as p:
             print(f'Loading GGD data with {p._processes} workers...')
-            dfs = p.map(_get_testdata_1, fdates)
+            dfs = p.map(_get_testdata_1, fdates_res)
             for i, df in enumerate(dfs):
                 if df is None:
                     dfs = dfs[:i]
@@ -133,11 +138,15 @@ def plot_jump_10Aug():
     fig.show()
 
 
-def plot_daily_tests_and_delays(date_min, date_max='2099-01-01', src_col='n_tested'):
+def plot_daily_tests_and_delays(
+        date_min, date_max='2099-01-01', src_col='n_tested',
+        region_re=None
+        ):
     """Note: date_min, date_max refer to file dates. Test dates are generally
     up to two days earlier. Repository 'mzelst-covid19' should be up to date.
 
     date_min can be a negative int: then it is the number of days ago.
+    region_re can be GGD region name or 'HR:(Noord|Miden|Zuid)'
 
     Optionally set src_col='n_pos'
     """
@@ -145,7 +154,7 @@ def plot_daily_tests_and_delays(date_min, date_max='2099-01-01', src_col='n_test
         date_min = (pd.Timestamp('now') + pd.Timedelta(date_min, 'd')).strftime('%Y-%m-%d')
     # Convert to index 'sdate' and columns 2, 3, 4, ... with n_tested
     # at 2, 3, ... days after sampling date.
-    df = load_testdata(date_min, date_max)
+    df = load_testdata(date_min, date_max, region_re=region_re)
     n_days_wait = 5
     for iw in range(2, n_days_wait+1):
         df1 = df.loc[df['sdate'] == df['fdate'] - pd.Timedelta(iw, 'd')]
@@ -170,7 +179,6 @@ def plot_daily_tests_and_delays(date_min, date_max='2099-01-01', src_col='n_test
               '#dddddd', '#bbbbbb', '#999999', '#777777',
               '#555555', '#333333', '#111111'
               ] * 2
-
     for iw, color in zip(range(2, n_days_wait+1), colors):
         xs = df.index + pd.Timedelta(0.5, 'd')
         ytops = df[iw].values
@@ -216,27 +224,29 @@ def plot_daily_tests_and_delays(date_min, date_max='2099-01-01', src_col='n_test
         df1['sdate'].iloc[0] + pd.Timedelta(n_days_wait-1, 'd'),
         df1['sdate'].iloc[-1] + pd.Timedelta(n_days_wait-1, 'd')
         )
+    title_suffix = region_re if region_re else ''
     if src_col == 'n_pos':
         ax.set_yscale('log')
         ax.set_ylim(1000, 30000)
         ax.grid(axis='y', which='minor')
         set_yaxis_log_minor_labels(ax)
-        ax.set_title('Aantal positieve GGD-tests per dag')
+        ax.set_title(f'Aantal positieve GGD-tests per dag {title_suffix}')
         ax.set_xlabel('Datum monstername')
     else:
         ax.set_ylim(0, 1.15*df[src_col].max())
-        ax.set_title('Aantal testuitslagen per dag - laatste drie dagen mogelijk incompleet')
+        ax.set_title('Aantal testuitslagen per dag - '
+                     f'laatste drie dagen mogelijk incompleet {title_suffix}')
     fig.canvas.manager.set_window_title(ax.title.get_text())
     # Smooth line
     halfday = pd.Timedelta(12, 'h')
     nums7 = nlcs.get_rolling7_with_est3(df[src_col], 3)
     ax.plot(
         df.index[:-3]+halfday, nums7[:-3], label='7-d gemiddelde',
-        color='black', alpha=0.5
+        color='#0000ff', alpha=0.5
         )
     ax.plot(
         df.index[-4:]+halfday, nums7[-4:],
-        linestyle=(2, (2, 2)), color='black', alpha=0.5
+        linestyle=(2, (2, 2)), color='#0000ff', alpha=0.5
         )
     if nums7.max() > ax.get_ylim()[1]:
         ax.set_ylim(0, nums7.max())

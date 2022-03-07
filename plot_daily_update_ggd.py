@@ -46,22 +46,27 @@ if __name__ == '__main__':
 
     print('---GGD tests---')
     ggd_tests.plot_daily_tests_and_delays(-(13*7+3))
-        # ggd_tests.plot_daily_tests_and_delays('2021-09-01', src_col='n_pos')
+    ggd_tests.plot_daily_tests_and_delays(-(13*7+3), region_re='HR:Zuid')
+    # ggd_tests.plot_daily_tests_and_delays('2021-09-01', src_col='n_pos')
     plt.pause(0.25)
     print('--R calculation--')
-    ggd_R.plot_rivm_and_ggd_positives(90, yscale=('log', 7500, 400000))
+    ggd_R.plot_rivm_and_ggd_positives(
+        90, yscale=('log', 2500, 400000),
+        ggd_regions=['Landelijk', 'HR:Noord', 'HR:Midden', 'HR:Zuid']
+        )
     plt.pause(0.25)
 
     ggd_R.plot_R_graph_multiple_methods(
-        num_days=100, ylim=(0.5, 2.5),
-        methods=('rivm', 'melding', 'ggd_der', 'tvt')
+        num_days=70, ylim=(0.3, 3),
+        methods=('rivm', 'melding', 'ggd_der', 'tvt', 'ggd_regions')
         )
-    plt.gcf().get_axes()[0].legend(loc='upper left')
+    fig = plt.gcf()
+    fig.figure.set_size_inches(10, 6.5)
     plt.pause(0.25)
-    nlcs.plot_Rt(
-        60, regions=['Nederland', 'HR:Noord', 'HR:Midden', 'HR:Zuid'],
-        ylim=(0.5, 2.5)
-        )
+    # nlcs.plot_Rt(
+    #     60, regions=['Nederland', 'HR:Noord', 'HR:Midden', 'HR:Zuid'],
+    #     ylim=(0.5, 2.5)
+    #     )
 
     # nlcs.construct_Dfunc(nlcs.DELAY_INF2REP, plot=True)
 

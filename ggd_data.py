@@ -22,6 +22,39 @@ DATA_PATHS = [
     ]
 
 FNAME_TEMPLATE = 'rivm_daily_{date}.csv.gz'
+# Holiday regions (approximately)
+REGIONS_NOORD = [
+    'Amsterdam-Amstelland',
+    'Drenthe',
+    'Flevoland',
+    'Fryslân',
+    'Gooi en Vechtstreek',
+    'Groningen',
+    'IJsselland',
+    'Kennemerland',
+    'Noord- en Oost-Gelderland',
+    'Noord-Holland-Noord',
+    'Twente',
+    'Zaanstreek-Waterland',
+    ]
+REGIONS_MIDDEN = [
+    'Zuid-Holland-Zuid.'
+    'Gelderland-Midden', # Includes Arnhem (which belongs to Zuid)
+    'Haaglanden',
+    'Hollands-Midden',
+    'Rotterdam-Rijnmond',
+    'Utrecht',
+    ]
+REGIONS_ZUID = [
+    'Brabant-Noord',
+    'Brabant-Zuidoost',
+    'Gelderland-Zuid',
+    'Limburg-Noord',
+    'Limburg-Zuid',
+    'Midden- en West-Brabant',
+    'Zeeland',
+    ]
+
 
 def update_ggd_tests(force=False):
     """Update GGD test file in data-rivm/tests.
@@ -46,7 +79,7 @@ def update_ggd_tests(force=False):
     tools.wait_for_refresh('15:14:55', '15:15:45', 'Waiting until {t2} for GGD data')
 
     url = 'https://data.rivm.nl/covid-19/COVID-19_uitgevoerde_testen.csv'
-    print(f'Getting latest GGD test data from RIVM...')
+    print('Getting latest GGD test data from RIVM...')
     with urllib.request.urlopen(url) as response:
         csv_bytes = response.read()
 
@@ -79,6 +112,8 @@ def update_ggd_tests(force=False):
     tmp_fpath.rename(fpath)
     print(f'Wrote {fpath}')
 
+_GGD_DF_CACHE = {}  # key: filename; value: full df copy
+
 
 def load_ggd_pos_tests(fdate=-1, quiet=False, region_regexp=None):
     """Get latest GGD test data as DataFrame.
@@ -90,7 +125,7 @@ def load_ggd_pos_tests(fdate=-1, quiet=False, region_regexp=None):
       (before 15:15 local time, one day earlier).
     - quiet: True to suppress 'loaded ...' messages.
     - region_regexp: optional regular expression to match against
-      Security_region_name.
+      Security_region_name. Or HR:Zuid, HR:Noord, HR:Midden.
 
     Return DataFrame:
 
@@ -112,24 +147,42 @@ def load_ggd_pos_tests(fdate=-1, quiet=False, region_regexp=None):
         raise ValueError(f'Bad fdate: {fdate}')
 
     fname = FNAME_TEMPLATE.format(date=fdate)
-    for data_path in DATA_PATHS:
-        fpath = Path(data_path) / fname
-        if fpath.is_file():
-            break
+    if fname in _GGD_DF_CACHE:
+        df = _GGD_DF_CACHE[fname].copy()
     else:
-        raise FileNotFoundError(f'{fname} in two directories. Run update_ggd_tests() first.')
+        for data_path in DATA_PATHS:
+            fpath = Path(data_path) / fname
+            if fpath.is_file():
+                break
+        else:
+            raise FileNotFoundError(f'{fname} in two directories. Run update_ggd_tests() first.')
 
-    df = pd.read_csv(fpath).drop(columns='Version')
-    if not quiet:
-        print(f'Loaded {fpath}')
-    df.rename(columns={'Date_of_statistics': 'Date_tested',
-                       'Tested_with_result': 'n_tested',
-                       'Tested_positive': 'n_pos'},
-              inplace=True)
-    df['Date_tested'] = pd.to_datetime(df['Date_tested'])
-    df.drop(columns='Date_of_report', inplace=True)
+        df = pd.read_csv(fpath).drop(columns='Version')
+        if not quiet:
+            print(f'Loaded {fpath}')
+        df.rename(columns={'Date_of_statistics': 'Date_tested',
+                           'Tested_with_result': 'n_tested',
+                           'Tested_positive': 'n_pos'},
+                  inplace=True)
+        df['Date_tested'] = pd.to_datetime(df['Date_tested'])
+        df.drop(columns='Date_of_report', inplace=True)
+
+        # Update cache
+        if len(_GGD_DF_CACHE) > 20:
+            _GGD_DF_CACHE.clear()
+        _GGD_DF_CACHE[fname] = df.copy()
+
+
     if region_regexp:
-        df1 = df.loc[df['Security_region_name'].str.match(region_regexp)]
+        if region_regexp.startswith('HR:'):
+            rdict = {
+                'Noord': REGIONS_NOORD,
+                'Midden': REGIONS_MIDDEN,
+                'Zuid': REGIONS_ZUID,
+                }
+            region_regexp = '|'.join(rdict[region_regexp[3:]])
+
+        df1 = df.loc[df['Security_region_name'].str.contains(region_regexp)]
         if len(df1) == 0:
             known_regions = sorted(df['Security_region_name'].unique())
             print(f'Regions available: {", ".join(known_regions)}.')
